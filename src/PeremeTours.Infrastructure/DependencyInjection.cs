@@ -6,11 +6,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using PeremeTours.Application.Authentication;
+using PeremeTours.Application.Content;
 using PeremeTours.Application.Tickets;
 using PeremeTours.Application.Tours;
 using PeremeTours.Application.Users;
 using PeremeTours.Domain.Users;
 using PeremeTours.Infrastructure.Authentication;
+using PeremeTours.Infrastructure.Content;
 using PeremeTours.Infrastructure.Persistence;
 using PeremeTours.Infrastructure.Tickets;
 using PeremeTours.Infrastructure.Tours;
@@ -39,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITourContentService, TourContentService>();
+        services.AddScoped<IHomepageContentService, HomepageContentService>();
         services.AddScoped<ITourImageStorage, S3TourImageStorage>();
         services.AddMemoryCache();
         services.Configure<EasyTicketOptions>(
