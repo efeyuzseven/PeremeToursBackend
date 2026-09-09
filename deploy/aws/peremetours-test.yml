@@ -96,6 +96,22 @@ Resources:
         - Key: Environment
           Value: Test
 
+  EasyTicketApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: /peremetours/test/EASYTICKET_API_KEY
+      Description: PeremeTours test EasyTicket API key
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -209,6 +225,7 @@ Resources:
                 Resource:
                   - !Ref JwtSigningSecret
                   - !Ref AdminPasswordSecret
+                  - !Ref EasyTicketApiKeySecret
                   - !GetAtt Database.MasterUserSecret.SecretArn
 
   EcsTaskRole:
@@ -343,6 +360,10 @@ Resources:
               Value: admin@peremetours.com
             - Name: DeploymentBootstrap__SeedDemoTickets
               Value: "true"
+            - Name: EasyTicket__BaseUrl
+              Value: https://easyticketapi.denturonline.com
+            - Name: EasyTicket__CacheMinutes
+              Value: "5"
           Secrets:
             - Name: Database__Password
               ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
@@ -350,6 +371,8 @@ Resources:
               ValueFrom: !Ref JwtSigningSecret
             - Name: DeploymentBootstrap__AdminPassword
               ValueFrom: !Ref AdminPasswordSecret
+            - Name: EasyTicket__ApiKey
+              ValueFrom: !Ref EasyTicketApiKeySecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -457,5 +480,7 @@ Outputs:
     Value: !GetAtt Database.Endpoint.Address
   AdminPasswordSecretArn:
     Value: !Ref AdminPasswordSecret
+  EasyTicketApiKeySecretArn:
+    Value: !Ref EasyTicketApiKeySecret
   BackendUrl:
     Value: https://api-peremetours-test.d1-tech.com

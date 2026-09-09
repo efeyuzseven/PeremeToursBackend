@@ -15,5 +15,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\PeremeTours.Application\PeremeTours.Application.csproj" />
     <ProjectReference Include="..\..\src\PeremeTours.Domain\PeremeTours.Domain.csproj" />
+    <ProjectReference Include="..\..\src\PeremeTours.Infrastructure\PeremeTours.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

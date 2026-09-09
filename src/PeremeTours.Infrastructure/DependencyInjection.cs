@@ -5,11 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using PeremeTours.Application.Authentication;
 using PeremeTours.Application.Tickets;
+using PeremeTours.Application.Tours;
 using PeremeTours.Application.Users;
 using PeremeTours.Domain.Users;
 using PeremeTours.Infrastructure.Authentication;
 using PeremeTours.Infrastructure.Persistence;
 using PeremeTours.Infrastructure.Tickets;
+using PeremeTours.Infrastructure.Tours;
 using PeremeTours.Infrastructure.Users;
 
 namespace PeremeTours.Infrastructure;
@@ -34,6 +36,23 @@ public static class DependencyInjection
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
+        services.AddMemoryCache();
+        services.Configure<EasyTicketOptions>(
+            configuration.GetSection(EasyTicketOptions.SectionName)
+        );
+        services.AddHttpClient<ITourCatalogService, EasyTicketTourCatalogService>(
+            (serviceProvider, client) =>
+            {
+                var easyTicket = serviceProvider
+                    .GetRequiredService<Microsoft.Extensions.Options.IOptions<EasyTicketOptions>>()
+                    .Value;
+                if (Uri.TryCreate(easyTicket.BaseUrl, UriKind.Absolute, out var baseUri))
+                {
+                    client.BaseAddress = baseUri;
+                }
+                client.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
         return services;
     }
 

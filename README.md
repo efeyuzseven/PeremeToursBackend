@@ -19,6 +19,9 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
+- `GET /api/v1/tours`
+- `GET /api/v1/tours/{externalTourId}/ports`
+- `GET /api/v1/tours/{externalTourId}/availability?departurePortId=3&saleType=2`
 - `GET /api/v1/admin/users`
 - `PATCH /api/v1/admin/users/{id}`
 - `GET /api/v1/admin/tickets`
@@ -27,6 +30,8 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/system/health`
 
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
+
+Tur kataloğu EasyTicket servisinden alınır ve yalnızca Boğaz Turu, Türk Gecesi Dinner Cruise, Sunset ve DayTime kategorileri yayınlanır. API anahtarı backend yapılandırmasındaki `EasyTicket:ApiKey` alanından okunur; frontend'e gönderilmez.
 
 ## Yerel geliştirme
 
@@ -37,6 +42,7 @@ docker compose up -d postgres
 dotnet tool restore
 dotnet tool run dotnet-ef database update --project src/PeremeTours.Infrastructure
 $env:DeploymentBootstrap__AdminPassword = "StrongTestPassword1"
+$env:EasyTicket__ApiKey = "EasyTicket-anahtarı"
 dotnet run --project src/PeremeTours.Api -- --bootstrap
 dotnet run --project src/PeremeTours.Api
 ```
@@ -57,6 +63,12 @@ Backend, diğer projelerde olduğu gibi paylaşılan ALB arkasında ECS/Fargate 
 ```powershell
 aws login
 .\scripts\deploy-infrastructure.ps1
+```
+
+İlk altyapı kurulumundan sonra EasyTicket anahtarı, değeri komut satırında yazdırılmadan `/peremetours/test/EASYTICKET_API_KEY` secret'ına kaydedilir. ECS task tanımı bu değeri `EasyTicket__ApiKey` olarak backend'e aktarır:
+
+```powershell
+.\scripts\set-easyticket-api-key.ps1
 ```
 
 Altyapı ilk kez kurulduktan sonra `main-prod` branch'ine yapılan her push GitHub Actions üzerinden image üretir, migration/bootstrap işini çalıştırır ve ECS servisini yayınlar.
