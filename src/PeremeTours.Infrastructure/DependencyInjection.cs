@@ -1,3 +1,5 @@
+using Amazon;
+using Amazon.S3;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -36,10 +38,21 @@ public static class DependencyInjection
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
+        services.AddScoped<ITourContentService, TourContentService>();
+        services.AddScoped<ITourImageStorage, S3TourImageStorage>();
         services.AddMemoryCache();
         services.Configure<EasyTicketOptions>(
             configuration.GetSection(EasyTicketOptions.SectionName)
         );
+        services.Configure<TourImageStorageOptions>(
+            configuration.GetSection(TourImageStorageOptions.SectionName)
+        );
+        var imageStorageOptions = configuration
+            .GetSection(TourImageStorageOptions.SectionName)
+            .Get<TourImageStorageOptions>() ?? new TourImageStorageOptions();
+        services.AddSingleton<IAmazonS3>(_ => new AmazonS3Client(
+            RegionEndpoint.GetBySystemName(imageStorageOptions.Region)
+        ));
         services.AddHttpClient<ITourCatalogService, EasyTicketTourCatalogService>(
             (serviceProvider, client) =>
             {

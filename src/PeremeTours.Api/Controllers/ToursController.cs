@@ -10,6 +10,7 @@ namespace PeremeTours.Api.Controllers;
 [Route("api/v1/tours")]
 public sealed class ToursController(
     ITourCatalogService tourCatalogService,
+    ITourContentService tourContentService,
     ILogger<ToursController> logger
 ) : ControllerBase
 {
@@ -21,13 +22,34 @@ public sealed class ToursController(
         );
 
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<TourCatalogItem>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<IReadOnlyList<PublicTourItem>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<IReadOnlyList<TourCatalogItem>>> List(
+    public async Task<ActionResult<IReadOnlyList<PublicTourItem>>> List(
         CancellationToken cancellationToken
     ) => await ExecuteAsync(
-        () => tourCatalogService.ListAsync(cancellationToken)
+        () => tourContentService.ListPublicAsync(cancellationToken)
     );
+
+    [HttpGet("{externalTourId:int}/image")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(
+        [Range(1, int.MaxValue)] int externalTourId,
+        CancellationToken cancellationToken
+    )
+    {
+        var image = await tourContentService.GetImageAsync(
+            externalTourId,
+            cancellationToken
+        );
+        if (image is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+        return File(image.Content, image.ContentType);
+    }
 
     [HttpGet("{externalTourId:int}/ports")]
     [ProducesResponseType<IReadOnlyList<TourPort>>(StatusCodes.Status200OK)]

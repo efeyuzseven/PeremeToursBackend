@@ -55,6 +55,32 @@ Resources:
         - Key: Environment
           Value: Test
 
+  TourImagesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub peremetours-tour-images-test-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
   BackendLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
@@ -239,6 +265,17 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ManagePeremeToursTourImages
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub ${TourImagesBucket.Arn}/*
 
   GitHubDeployRole:
     Type: AWS::IAM::Role
@@ -364,6 +401,12 @@ Resources:
               Value: https://easyticketapi.denturonline.com
             - Name: EasyTicket__CacheMinutes
               Value: "5"
+            - Name: TourImages__BucketName
+              Value: !Ref TourImagesBucket
+            - Name: TourImages__Region
+              Value: !Ref AWS::Region
+            - Name: TourImages__Prefix
+              Value: tour-content
           Secrets:
             - Name: Database__Password
               ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
@@ -482,5 +525,7 @@ Outputs:
     Value: !Ref AdminPasswordSecret
   EasyTicketApiKeySecretArn:
     Value: !Ref EasyTicketApiKeySecret
+  TourImagesBucketName:
+    Value: !Ref TourImagesBucket
   BackendUrl:
     Value: https://api-peremetours-test.d1-tech.com

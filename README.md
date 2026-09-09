@@ -22,6 +22,11 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/tours`
 - `GET /api/v1/tours/{externalTourId}/ports`
 - `GET /api/v1/tours/{externalTourId}/availability?departurePortId=3&saleType=2`
+- `GET /api/v1/tours/{externalTourId}/image`
+- `GET /api/v1/admin/tour-contents`
+- `PUT /api/v1/admin/tour-contents/{externalTourId}`
+- `POST /api/v1/admin/tour-contents/{externalTourId}/image`
+- `DELETE /api/v1/admin/tour-contents/{externalTourId}/image`
 - `GET /api/v1/admin/users`
 - `PATCH /api/v1/admin/users/{id}`
 - `GET /api/v1/admin/tickets`
@@ -32,6 +37,8 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
 
 Tur kataloğu EasyTicket servisinden alınır ve yalnızca Boğaz Turu, Türk Gecesi Dinner Cruise, Sunset ve DayTime kategorileri yayınlanır. API anahtarı backend yapılandırmasındaki `EasyTicket:ApiKey` alanından okunur; frontend'e gönderilmez.
+
+Admin panelindeki tur içerik düzenlemeleri `externalTourId` üzerinden PostgreSQL'de tutulur. Başlık, açıklama, rozet, görünürlük ve gösterim sırası EasyTicket kaydını değiştirmeden sitede ezilebilir. JPG, PNG ve WebP kapak görselleri private S3 kovasında saklanır ve yalnızca public görsel endpoint'i üzerinden sunulur.
 
 ## Yerel geliştirme
 
