@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PeremeTours.Api/PeremeTours.Api.csproj" />
+    <Project Path="src/PeremeTours.Application/PeremeTours.Application.csproj" />
+    <Project Path="src/PeremeTours.Domain/PeremeTours.Domain.csproj" />
+    <Project Path="src/PeremeTours.Infrastructure/PeremeTours.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PeremeTours.IntegrationTests/PeremeTours.IntegrationTests.csproj" />
+    <Project Path="tests/PeremeTours.UnitTests/PeremeTours.UnitTests.csproj" />
+  </Folder>
+</Solution>

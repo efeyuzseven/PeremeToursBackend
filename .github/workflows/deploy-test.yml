@@ -1,0 +1,180 @@
+name: Deploy backend to AWS test
+
+on:
+  push:
+    branches: [main-prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: peremetours-backend-test
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  AWS_ROLE_ARN: arn:aws:iam::890571110014:role/peremetours-test-github-deploy
+  STACK_NAME: peremetours-test
+  CONTAINER_NAME: peremetours-backend
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore PeremeTours.slnx
+
+      - name: Build
+        run: dotnet build PeremeTours.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test PeremeTours.slnx --configuration Release --no-build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Read deployment outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stack_output() {
+            aws cloudformation describe-stacks \
+              --stack-name "$STACK_NAME" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
+              --output text
+          }
+
+          echo "ECR_URI=$(stack_output BackendRepositoryUri)" >> "$GITHUB_ENV"
+          echo "ECS_CLUSTER=$(stack_output ClusterName)" >> "$GITHUB_ENV"
+          echo "ECS_SERVICE=$(stack_output BackendServiceName)" >> "$GITHUB_ENV"
+          echo "ECS_SECURITY_GROUP=$(stack_output ApplicationSecurityGroupId)" >> "$GITHUB_ENV"
+          echo "PRIVATE_SUBNETS=$(stack_output PrivateSubnetIds)" >> "$GITHUB_ENV"
+
+      - name: Build and push immutable image
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${ECR_URI}:${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+          docker build --tag "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Register task definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_TASK_DEFINITION=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition \
+            --task-definition "$CURRENT_TASK_DEFINITION" \
+            --query taskDefinition > current-task-definition.json
+
+          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" '
+            {
+              family,
+              taskRoleArn,
+              executionRoleArn,
+              networkMode,
+              containerDefinitions,
+              volumes,
+              placementConstraints,
+              requiresCompatibilities,
+              cpu,
+              memory,
+              runtimePlatform,
+              ephemeralStorage
+            }
+            | .containerDefinitions |= map(
+                if .name == $container then .image = $image else . end
+              )
+            | with_entries(select(.value != null))
+          ' current-task-definition.json > next-task-definition.json
+
+          NEXT_TASK_DEFINITION=$(aws ecs register-task-definition \
+            --cli-input-json file://next-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "NEXT_TASK_DEFINITION=$NEXT_TASK_DEFINITION" >> "$GITHUB_ENV"
+
+      - name: Migrate and bootstrap PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          NETWORK_CONFIGURATION=$(jq -cn \
+            --arg subnets "$PRIVATE_SUBNETS" \
+            --arg securityGroup "$ECS_SECURITY_GROUP" \
+            '{awsvpcConfiguration:{subnets:($subnets | split(",")),securityGroups:[$securityGroup],assignPublicIp:"DISABLED"}}')
+          CONTAINER_OVERRIDES=$(jq -cn \
+            --arg container "$CONTAINER_NAME" \
+            '{containerOverrides:[{name:$container,command:["dotnet","PeremeTours.Api.dll","--bootstrap"]}]}')
+
+          RUN_RESULT=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "$NEXT_TASK_DEFINITION" \
+            --network-configuration "$NETWORK_CONFIGURATION" \
+            --overrides "$CONTAINER_OVERRIDES")
+
+          if [[ "$(jq '.failures | length' <<< "$RUN_RESULT")" -ne 0 ]]; then
+            jq '.failures' <<< "$RUN_RESULT"
+            exit 1
+          fi
+
+          BOOTSTRAP_TASK=$(jq -r '.tasks[0].taskArn // empty' <<< "$RUN_RESULT")
+          test -n "$BOOTSTRAP_TASK"
+          aws ecs wait tasks-stopped \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$BOOTSTRAP_TASK"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$BOOTSTRAP_TASK" \
+            --query "tasks[0].containers[?name=='$CONTAINER_NAME'].exitCode | [0]" \
+            --output text)
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            aws ecs describe-tasks \
+              --cluster "$ECS_CLUSTER" \
+              --tasks "$BOOTSTRAP_TASK" \
+              --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[].{name:name,reason:reason,exitCode:exitCode}}'
+            exit 1
+          fi
+
+      - name: Deploy backend service
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEXT_TASK_DEFINITION" \
+            --desired-count 1 \
+            --force-new-deployment > /dev/null
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+      - name: Verify public health endpoint
+        run: curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 10 https://api-peremetours-test.d1-tech.com/api/v1/system/health

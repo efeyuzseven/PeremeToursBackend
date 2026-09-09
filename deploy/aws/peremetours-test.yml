@@ -1,0 +1,461 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: PeremeTours test environment on shared D1 Tech ECS/ALB with PostgreSQL RDS.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0269c3ea5f1d4bc38
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-0aa00961a9dddee01,subnet-0f3dd8cb82840c21b,subnet-0c7a9bfe8a7e2b744
+  AlbSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0d546e0655e28e3d5
+  EcsClusterName:
+    Type: String
+    Default: D1TechBackendEcsCluster
+  HttpsListenerArn:
+    Type: String
+    Default: arn:aws:elasticloadbalancing:eu-central-1:890571110014:listener/app/d1tech-alb/8422203dabbee15e/37ca7f23a8b2a1df
+  HostedZoneId:
+    Type: String
+    Default: Z08656481HTWDIKKIFRTL
+  AlbDnsName:
+    Type: String
+    Default: d1tech-alb-1446238077.eu-central-1.elb.amazonaws.com
+  AlbCanonicalHostedZoneId:
+    Type: String
+    Default: Z215JYRZR1TBD5
+  GitHubOidcProviderArn:
+    Type: String
+    Default: arn:aws:iam::890571110014:oidc-provider/token.actions.githubusercontent.com
+  GitHubRepositorySubject:
+    Type: String
+    Default: repo:efeyuzseven/PeremeToursBackend:ref:refs/heads/main-prod
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+
+Resources:
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: peremetours-backend
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"Keep latest 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: /ecs/peremetours-backend-test
+      RetentionInDays: 14
+
+  JwtSigningSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: /peremetours/test/JWT_SIGNING_KEY
+      Description: PeremeTours test JWT signing key
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: /peremetours/test/ADMIN_PASSWORD
+      Description: PeremeTours test initial admin password
+      GenerateSecretString:
+        PasswordLength: 24
+        ExcludePunctuation: true
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: PeremeTours PostgreSQL private subnets
+      SubnetIds: !Ref PrivateSubnetIds
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PeremeTours PostgreSQL access from its ECS service
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: peremetours-test-postgres
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: peremetours-test
+      Engine: postgres
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: peremetours
+      MasterUsername: peremetours_app
+      ManageMasterUserPassword: true
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      Port: 5432
+      PubliclyAccessible: false
+      MultiAZ: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 7
+      CopyTagsToSnapshot: true
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PeremeTours test ECS port 8080 from shared ALB only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref AlbSecurityGroupId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: peremetours-test-ecs
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  DatabaseIngressFromApplication:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: PeremeTours backend PostgreSQL access
+      GroupId: !GetAtt DatabaseSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt ApplicationSecurityGroup.GroupId
+
+  EcsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: peremetours-test-ecs-execution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadPeremeToursTestSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref JwtSigningSecret
+                  - !Ref AdminPasswordSecret
+                  - !GetAtt Database.MasterUserSecret.SecretArn
+
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: peremetours-test-ecs-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: peremetours-test-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Ref GitHubRepositorySubject
+      Policies:
+        - PolicyName: PeremeToursTestDeployment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AuthenticateToEcr
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: PushImages
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !GetAtt BackendRepository.Arn
+              - Sid: ReadAndRegisterTaskDefinitions
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                Resource: "*"
+              - Sid: RunMigrationTask
+                Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/peremetours-backend-test:*
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${EcsClusterName}
+              - Sid: InspectTasks
+                Effect: Allow
+                Action: ecs:DescribeTasks
+                Resource: "*"
+              - Sid: DeployService
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsClusterName}/peremetours-backend-test
+              - Sid: PassTaskRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt EcsExecutionRole.Arn
+                  - !GetAtt EcsTaskRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+              - Sid: ReadStackOutputs
+                Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: "*"
+
+  BackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: peremetours-backend-test
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt EcsExecutionRole.Arn
+      TaskRoleArn: !GetAtt EcsTaskRole.Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: peremetours-backend
+          Image: !Sub ${BackendRepository.RepositoryUri}:bootstrap
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              HostPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: ASPNETCORE_ENVIRONMENT
+              Value: Production
+            - Name: ASPNETCORE_URLS
+              Value: http://+:8080
+            - Name: Cors__AllowedOrigins__0
+              Value: https://d2bmjk2h6qp4lz.cloudfront.net
+            - Name: Database__Host
+              Value: !GetAtt Database.Endpoint.Address
+            - Name: Database__Port
+              Value: "5432"
+            - Name: Database__Name
+              Value: peremetours
+            - Name: Database__Username
+              Value: peremetours_app
+            - Name: Jwt__Issuer
+              Value: PeremeTours.Api
+            - Name: Jwt__Audience
+              Value: PeremeTours.Web
+            - Name: Jwt__AccessTokenMinutes
+              Value: "480"
+            - Name: DeploymentBootstrap__AdminEmail
+              Value: admin@peremetours.com
+            - Name: DeploymentBootstrap__SeedDemoTickets
+              Value: "true"
+          Secrets:
+            - Name: Database__Password
+              ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
+            - Name: Jwt__Key
+              ValueFrom: !Ref JwtSigningSecret
+            - Name: DeploymentBootstrap__AdminPassword
+              ValueFrom: !Ref AdminPasswordSecret
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: peremetours-backend-test-tg
+      VpcId: !Ref VpcId
+      TargetType: ip
+      Protocol: HTTP
+      Port: 8080
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckPath: /api/v1/system/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200-399
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"
+
+  BackendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListenerArn
+      Priority: 180
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - api-peremetours-test.d1-tech.com
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  BackendService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - BackendListenerRule
+      - DatabaseIngressFromApplication
+    Properties:
+      ServiceName: peremetours-backend-test
+      Cluster: !Ref EcsClusterName
+      DesiredCount: 0
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      TaskDefinition: !Ref BackendTaskDefinition
+      HealthCheckGracePeriodSeconds: 120
+      EnableECSManagedTags: true
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref PrivateSubnetIds
+          SecurityGroups:
+            - !GetAtt ApplicationSecurityGroup.GroupId
+      LoadBalancers:
+        - ContainerName: peremetours-backend
+          ContainerPort: 8080
+          TargetGroupArn: !Ref BackendTargetGroup
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  BackendDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: api-peremetours-test.d1-tech.com
+      Type: A
+      AliasTarget:
+        DNSName: !Ref AlbDnsName
+        HostedZoneId: !Ref AlbCanonicalHostedZoneId
+        EvaluateTargetHealth: true
+
+Outputs:
+  GitHubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri
+  ClusterName:
+    Value: !Ref EcsClusterName
+  ApplicationSecurityGroupId:
+    Value: !GetAtt ApplicationSecurityGroup.GroupId
+  PrivateSubnetIds:
+    Value: !Join [",", !Ref PrivateSubnetIds]
+  BackendServiceName:
+    Value: !GetAtt BackendService.Name
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  AdminPasswordSecretArn:
+    Value: !Ref AdminPasswordSecret
+  BackendUrl:
+    Value: https://api-peremetours-test.d1-tech.com
