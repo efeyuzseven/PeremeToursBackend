@@ -1,7 +1,7 @@
 param(
   [string]$Region = "eu-central-1",
   [string]$StackName = "peremetours-test",
-  [string]$GitHubRepositorySubject = "repo:efeyuzseven/PeremeToursBackend:ref:refs/heads/main-prod"
+  [string]$GitHubRepositorySubject = "repo:efeyuzseven@163446299/PeremeToursBackend@1362469059:ref:refs/heads/main-prod"
 )
 
 $ErrorActionPreference = "Stop"

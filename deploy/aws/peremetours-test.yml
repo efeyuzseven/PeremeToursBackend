@@ -31,7 +31,7 @@ Parameters:
     Default: arn:aws:iam::890571110014:oidc-provider/token.actions.githubusercontent.com
   GitHubRepositorySubject:
     Type: String
-    Default: repo:efeyuzseven/PeremeToursBackend:ref:refs/heads/main-prod
+    Default: repo:efeyuzseven@163446299/PeremeToursBackend@1362469059:ref:refs/heads/main-prod
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
