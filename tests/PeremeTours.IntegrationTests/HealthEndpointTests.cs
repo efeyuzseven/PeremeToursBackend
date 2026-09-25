@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -29,5 +30,36 @@ public sealed class HealthEndpointTests
     {
         var response = await _client.GetAsync("/api/v1/system/health");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PaymentInitializationStaysUnavailableUntilPosIsEnabled()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/v1/payments/tour/initialize",
+            new
+            {
+                externalTourId = 1,
+                externalDeparturePortId = 1,
+                externalDepartureId = 1,
+                externalTripId = 1,
+                externalPriceId = 1,
+                tourDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+                guestCount = 1,
+                customerName = "Test User",
+                customerEmail = "test@example.com",
+                language = "tr",
+                card = new
+                {
+                    holderName = "Test User",
+                    number = "4111111111111111",
+                    securityCode = "123",
+                    expiryMonth = 12,
+                    expiryYear = DateTime.UtcNow.Year + 1,
+                },
+            }
+        );
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 }

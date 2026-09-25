@@ -35,6 +35,8 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/admin/tickets`
 - `POST /api/v1/admin/tickets`
 - `PATCH /api/v1/admin/tickets/{id}`
+- `POST /api/v1/payments/tour/initialize`
+- `POST /api/v1/payments/ziraat/callback`
 - `GET /api/v1/system/health`
 
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
@@ -90,3 +92,28 @@ Altyapı ilk kez kurulduktan sonra `main-prod` branch'ine yapılan her push GitH
 - Admin parolası: `.\scripts\get-test-admin-password.ps1`
 
 CloudFormation: `deploy/aws/peremetours-test.yml`
+
+## Ziraat Sanal POS
+
+PeremeTours ödeme kayıtları aynı POS hesabı kullanılsa bile `PRM-` sipariş
+öneki ve `Application=PeremeTours` yapılandırılmış log alanıyla Dentur Avrasya
+işlemlerinden ayrılır. Banka API kullanıcı adı uygulamada sabit değildir ve
+yalnızca `Payments:Ziraat:ApiUser` secret değeri üzerinden okunur.
+
+POS bilgileri belli olduğunda ekrana veya komut geçmişine yazdırılmadan
+Secrets Manager'a kaydedilir:
+
+```powershell
+.\scripts\set-ziraat-pos-settings.ps1
+```
+
+Ödeme özelliği varsayılan olarak kapalıdır. Banka testleri, callback doğrulaması
+ve bilet üretim akışı birlikte onaylanmadan açılmamalıdır. Hazır olduğunda
+altyapı açık parametreyle güncellenir:
+
+```powershell
+.\scripts\deploy-infrastructure.ps1 -ZiraatPaymentEnabled true
+```
+
+Kart numarası, güvenlik kodu ve POS parolaları veritabanına veya uygulama
+loglarına yazılmaz.

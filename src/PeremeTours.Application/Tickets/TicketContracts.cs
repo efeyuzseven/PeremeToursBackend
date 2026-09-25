@@ -15,6 +15,7 @@ public sealed record TicketSummary(
     string Currency,
     TicketStatus Status,
     TicketChannel Channel,
+    TicketPaymentStatus PaymentStatus,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc
 );

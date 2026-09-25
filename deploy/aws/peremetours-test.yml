@@ -35,6 +35,12 @@ Parameters:
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
+  ZiraatPaymentEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
 
 Resources:
   BackendRepository:
@@ -132,6 +138,20 @@ Resources:
       GenerateSecretString:
         PasswordLength: 48
         ExcludePunctuation: true
+      Tags:
+        - Key: Project
+          Value: PeremeTours
+        - Key: Environment
+          Value: Test
+
+  ZiraatPosSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: /peremetours/test/ZIRAAT_POS
+      Description: PeremeTours Ziraat POS credentials; payment stays disabled until bank API user is assigned
+      SecretString: '{"merchantId":"","clientId":"","storeKey":"","apiUser":"","apiPassword":""}'
       Tags:
         - Key: Project
           Value: PeremeTours
@@ -252,6 +272,7 @@ Resources:
                   - !Ref JwtSigningSecret
                   - !Ref AdminPasswordSecret
                   - !Ref EasyTicketApiKeySecret
+                  - !Ref ZiraatPosSecret
                   - !GetAtt Database.MasterUserSecret.SecretArn
 
   EcsTaskRole:
@@ -407,6 +428,20 @@ Resources:
               Value: !Ref AWS::Region
             - Name: TourImages__Prefix
               Value: tour-content
+            - Name: Payments__Ziraat__Enabled
+              Value: !Ref ZiraatPaymentEnabled
+            - Name: Payments__Ziraat__GatewayUrl
+              Value: https://sanalpos2.ziraatbank.com.tr/fim/est3dgate
+            - Name: Payments__Ziraat__ApiUrl
+              Value: https://sanalpos2.ziraatbank.com.tr/fim/api
+            - Name: Payments__Ziraat__CallbackUrl
+              Value: https://api-peremetours-test.d1-tech.com/api/v1/payments/ziraat/callback
+            - Name: Payments__Ziraat__FrontendOrigin
+              Value: https://d2bmjk2h6qp4lz.cloudfront.net
+            - Name: Payments__Ziraat__ApplicationName
+              Value: PeremeTours
+            - Name: Payments__Ziraat__OrderPrefix
+              Value: PRM
           Secrets:
             - Name: Database__Password
               ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
@@ -416,6 +451,16 @@ Resources:
               ValueFrom: !Ref AdminPasswordSecret
             - Name: EasyTicket__ApiKey
               ValueFrom: !Ref EasyTicketApiKeySecret
+            - Name: Payments__Ziraat__MerchantId
+              ValueFrom: !Join [":", [!Ref ZiraatPosSecret, "merchantId::"]]
+            - Name: Payments__Ziraat__ClientId
+              ValueFrom: !Join [":", [!Ref ZiraatPosSecret, "clientId::"]]
+            - Name: Payments__Ziraat__StoreKey
+              ValueFrom: !Join [":", [!Ref ZiraatPosSecret, "storeKey::"]]
+            - Name: Payments__Ziraat__ApiUser
+              ValueFrom: !Join [":", [!Ref ZiraatPosSecret, "apiUser::"]]
+            - Name: Payments__Ziraat__ApiPassword
+              ValueFrom: !Join [":", [!Ref ZiraatPosSecret, "apiPassword::"]]
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -525,6 +570,8 @@ Outputs:
     Value: !Ref AdminPasswordSecret
   EasyTicketApiKeySecretArn:
     Value: !Ref EasyTicketApiKeySecret
+  ZiraatPosSecretArn:
+    Value: !Ref ZiraatPosSecret
   TourImagesBucketName:
     Value: !Ref TourImagesBucket
   BackendUrl:

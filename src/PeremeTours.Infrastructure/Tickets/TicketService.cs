@@ -41,6 +41,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             Currency = "TRY",
             Status = command.Status,
             Channel = command.Channel,
+            PaymentStatus = TicketPaymentStatus.NotRequired,
             UserId = actorUserId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
@@ -116,6 +117,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             ticket.Currency,
             ticket.Status,
             ticket.Channel,
+            ticket.PaymentStatus,
             ticket.CreatedAtUtc,
             ticket.UpdatedAtUtc
         );

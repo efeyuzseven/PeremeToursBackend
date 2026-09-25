@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using PeremeTours.Application.Authentication;
 using PeremeTours.Application.Content;
+using PeremeTours.Application.Payments;
 using PeremeTours.Application.Tickets;
 using PeremeTours.Application.Tours;
 using PeremeTours.Application.Users;
@@ -14,6 +15,7 @@ using PeremeTours.Domain.Users;
 using PeremeTours.Infrastructure.Authentication;
 using PeremeTours.Infrastructure.Content;
 using PeremeTours.Infrastructure.Persistence;
+using PeremeTours.Infrastructure.Payments;
 using PeremeTours.Infrastructure.Tickets;
 using PeremeTours.Infrastructure.Tours;
 using PeremeTours.Infrastructure.Users;
@@ -40,6 +42,13 @@ public static class DependencyInjection
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
+        services.AddScoped<ITourPaymentService, TourPaymentService>();
+        services.Configure<ZiraatPosOptions>(
+            configuration.GetSection(ZiraatPosOptions.SectionName)
+        );
+        services.AddHttpClient<IZiraatPosGateway, ZiraatPosGateway>(client =>
+            client.Timeout = TimeSpan.FromSeconds(30)
+        );
         services.AddScoped<ITourContentService, TourContentService>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
         services.AddScoped<ITourImageStorage, S3TourImageStorage>();

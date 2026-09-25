@@ -1,7 +1,9 @@
 param(
   [string]$Region = "eu-central-1",
   [string]$StackName = "peremetours-test",
-  [string]$GitHubRepositorySubject = "repo:efeyuzseven@163446299/PeremeToursBackend@1362469059:ref:refs/heads/main-prod"
+  [string]$GitHubRepositorySubject = "repo:efeyuzseven@163446299/PeremeToursBackend@1362469059:ref:refs/heads/main-prod",
+  [ValidateSet("true", "false")]
+  [string]$ZiraatPaymentEnabled = "false"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +31,7 @@ aws cloudformation deploy `
   --stack-name $StackName `
   --region $Region `
   --capabilities CAPABILITY_NAMED_IAM `
-  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" `
+  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" "ZiraatPaymentEnabled=$ZiraatPaymentEnabled" `
   --tags Project=PeremeTours Environment=Test `
   --no-fail-on-empty-changeset `
   --no-cli-pager
