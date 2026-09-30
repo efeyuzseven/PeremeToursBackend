@@ -51,6 +51,10 @@ public static class DependencyInjection
         );
         services.AddScoped<ITourContentService, TourContentService>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
+        services.AddScoped<
+            IFrequentlyAskedQuestionService,
+            FrequentlyAskedQuestionService
+        >();
         services.AddScoped<ITourImageStorage, S3TourImageStorage>();
         services.AddMemoryCache();
         services.Configure<EasyTicketOptions>(

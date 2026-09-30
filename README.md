@@ -24,12 +24,17 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/tours/{externalTourId}/availability?departurePortId=3&saleType=2`
 - `GET /api/v1/tours/{externalTourId}/image`
 - `GET /api/v1/site-content/homepage`
+- `GET /api/v1/faqs`
 - `GET /api/v1/admin/tour-contents`
 - `PUT /api/v1/admin/tour-contents/{externalTourId}`
 - `POST /api/v1/admin/tour-contents/{externalTourId}/image`
 - `DELETE /api/v1/admin/tour-contents/{externalTourId}/image`
 - `GET /api/v1/admin/site-content/homepage`
 - `PUT /api/v1/admin/site-content/homepage`
+- `GET /api/v1/admin/faqs`
+- `POST /api/v1/admin/faqs`
+- `PUT /api/v1/admin/faqs/{id}`
+- `DELETE /api/v1/admin/faqs/{id}`
 - `GET /api/v1/admin/users`
 - `PATCH /api/v1/admin/users/{id}`
 - `GET /api/v1/admin/tickets`
@@ -46,6 +51,8 @@ Tur kataloğu EasyTicket servisinden alınır ve yalnızca Boğaz Turu, Türk Ge
 Admin panelindeki tur içerik düzenlemeleri `externalTourId` üzerinden PostgreSQL'de tutulur. Başlık, açıklama, rozet, görünürlük ve gösterim sırası EasyTicket kaydını değiştirmeden sitede ezilebilir. JPG, PNG ve WebP kapak görselleri private S3 kovasında saklanır ve yalnızca public görsel endpoint'i üzerinden sunulur.
 
 Ana sayfa metinleri, hizmet kartları, Neden Pereme faydaları, hikâye alanı, son rezervasyon çağrısı ve en fazla 6 Instagram Reel/gönderi bağlantısı iki dilde yönetilebilir. İçerik PostgreSQL'de JSONB olarak tutulur; ilk kurulumda yerleşik TR/EN metinleri kullanılır.
+
+Sıkça sorulan sorular PostgreSQL'de iki dilde tutulur. Yönetici soruları ekleyebilir, düzenleyebilir, sıralayabilir, yayından kaldırabilir veya silebilir; herkese açık uç yalnızca yayındaki soruları döndürür.
 
 ## Yerel geliştirme
 
