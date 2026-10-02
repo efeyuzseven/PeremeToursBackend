@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PeremeTours.Infrastructure;
 using PeremeTours.Infrastructure.Authentication;
+using PeremeTours.Infrastructure.Email;
 using PeremeTours.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -145,6 +146,15 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var app = builder.Build();
+
+if (args.Contains("--check-mail", StringComparer.OrdinalIgnoreCase))
+{
+    var result = await MailConnectionDiagnostics.CheckAsync(
+        app.Configuration.GetSection(MailOptions.SectionName).Get<MailOptions>() ?? new MailOptions(), CancellationToken.None);
+    Console.WriteLine(result);
+    Environment.ExitCode = result == "SMTP_TLS_OK" ? 0 : 1;
+    return;
+}
 
 if (isBootstrapCommand)
 {

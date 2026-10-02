@@ -15,6 +15,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
     {
         var tickets = await dbContext.TourTickets
             .AsNoTracking()
+            .Include(ticket => ticket.PaymentEmail)
             .OrderByDescending(ticket => ticket.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         return tickets.Select(Map).ToList();
@@ -133,7 +134,9 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             ticket.TicketingStatus,
             ticket.ExternalVoucherGuid,
             ticket.TicketingFailureCode,
-            ticket.PaymentFailureCode
+            ticket.PaymentFailureCode,
+            ticket.PaymentEmail?.Status,
+            ticket.PaymentEmail?.SentAtUtc
         );
 
     private static string CreateTicketCode(DateTimeOffset now) =>

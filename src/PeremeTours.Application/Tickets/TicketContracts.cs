@@ -21,7 +21,9 @@ public sealed record TicketSummary(
     TicketingStatus TicketingStatus,
     string? ExternalVoucherGuid,
     string? TicketingFailureCode,
-    string? PaymentFailureCode
+    string? PaymentFailureCode,
+    PaymentEmailStatus? EmailStatus,
+    DateTime? EmailSentAtUtc
 );
 
 public sealed record CreateTicketCommand(

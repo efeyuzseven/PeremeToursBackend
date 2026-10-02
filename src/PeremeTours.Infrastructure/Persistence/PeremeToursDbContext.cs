@@ -13,6 +13,10 @@ public sealed class PeremeToursDbContext(DbContextOptions<PeremeToursDbContext> 
 
     public DbSet<TourTicket> TourTickets => Set<TourTicket>();
 
+    public DbSet<PaymentEmail> PaymentEmails => Set<PaymentEmail>();
+
+    public DbSet<TicketErrorRecord> TicketErrorRecords => Set<TicketErrorRecord>();
+
     public DbSet<TourContent> TourContents => Set<TourContent>();
 
     public DbSet<HomepageContent> HomepageContents => Set<HomepageContent>();

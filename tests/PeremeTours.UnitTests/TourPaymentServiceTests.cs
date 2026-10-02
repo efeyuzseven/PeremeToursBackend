@@ -122,6 +122,10 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Equal(3, status.Tickets.Count);
         Assert.All(status.Tickets, item => Assert.NotEmpty(item.Pnr!));
         Assert.Equal(TicketStatus.Confirmed, (await _db.TourTickets.SingleAsync()).Status);
+        var email = Assert.Single(await _db.PaymentEmails.ToListAsync());
+        Assert.Equal(PaymentEmailStatus.Queued, email.Status);
+        Assert.Equal("tr", email.Ticket.CustomerLanguage);
+        Assert.Equal("Kabataş", email.Ticket.DeparturePortName);
     }
 
     [Fact]
@@ -158,6 +162,8 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.False((await _service.CompleteAsync(Callback(start), CancellationToken.None)).IsSuccessful);
         Assert.Equal(0, _sales.Calls);
         Assert.Equal(TicketPaymentStatus.Failed, (await _db.TourTickets.SingleAsync()).PaymentStatus);
+        Assert.Empty(await _db.PaymentEmails.ToListAsync());
+        Assert.Equal(TicketErrorStage.Payment, Assert.Single(await _db.TicketErrorRecords.ToListAsync()).Stage);
     }
 
     [Fact]
@@ -170,6 +176,8 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Equal(1, _bank.AuthCalls);
         Assert.Equal(0, _sales.Calls);
         Assert.Equal("ReviewRequired", (await _service.GetStatusAsync(command.AttemptId, CancellationToken.None))!.PaymentStatus);
+        Assert.Empty(await _db.PaymentEmails.ToListAsync());
+        Assert.Equal("BANK_RESULT_UNKNOWN", Assert.Single(await _db.TicketErrorRecords.ToListAsync()).Code);
     }
 
     [Fact]
@@ -185,6 +193,25 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Empty(status.Tickets);
         Assert.Equal(TicketStatus.Pending, (await _db.TourTickets.SingleAsync()).Status);
         Assert.Equal(1, _bank.AuthCalls); Assert.Equal(1, _sales.Calls);
+        Assert.Single(await _db.PaymentEmails.ToListAsync());
+        Assert.Equal(TicketErrorStage.Ticketing, Assert.Single(await _db.TicketErrorRecords.ToListAsync()).Stage);
+    }
+
+    [Fact]
+    public async Task BankAuthenticationFailureRecordsSafeDetailButNeverRawBankPayload()
+    {
+        var start = await _service.StartAsync(Command() with { Language = "en" }, CancellationToken.None);
+        _db.ChangeTracker.Clear();
+        _bank.Approved = false;
+        _bank.ErrorDetailCode = "CORE-2201";
+        _bank.ErrorMessage = "PAN=4111111111111111 CVC=123 password=secret-token";
+        await _service.CompleteAsync(Callback(start), CancellationToken.None);
+        var entry = Assert.Single(await _db.TicketErrorRecords.ToListAsync());
+        Assert.Equal("CORE-2201", entry.ProviderCode);
+        Assert.Contains("kullanıcısı doğrulanamadı", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("411111", entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-token", entry.Message, StringComparison.Ordinal);
+        Assert.Equal("en", (await _db.TourTickets.SingleAsync()).CustomerLanguage);
     }
 
     [Fact]
@@ -240,6 +267,8 @@ public sealed class TourPaymentServiceTests : IDisposable
         public bool HashValid { get; set; } = true;
         public bool Approved { get; set; } = true;
         public bool ThrowOnAuth { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string? ErrorDetailCode { get; set; }
         public TaskCompletionSource? AuthGate { get; set; }
         public Task<string> StartThreeDSecureAsync(ZiraatPaymentRequest payment, CancellationToken cancellationToken)
         {
@@ -251,7 +280,7 @@ public sealed class TourPaymentServiceTests : IDisposable
             AuthCalls++;
             if (AuthGate is not null) await AuthGate.Task;
             if (ThrowOnAuth) throw new PaymentGatewayException("mock timeout");
-            return new(Approved, "fake-auth", "fake-host", Approved ? "00" : "05", null);
+            return new(Approved, "fake-auth", "fake-host", Approved ? "00" : "05", ErrorMessage, ErrorDetailCode);
         }
     }
     private sealed class FakeSales : IEasyTicketSalesGateway

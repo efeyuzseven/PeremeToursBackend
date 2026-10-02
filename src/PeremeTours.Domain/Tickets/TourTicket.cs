@@ -18,6 +18,12 @@ public sealed class TourTicket
 
     public required string CustomerEmail { get; set; }
 
+    public string CustomerLanguage { get; set; } = "tr";
+
+    public string DeparturePortName { get; set; } = string.Empty;
+
+    public PaymentEmail? PaymentEmail { get; set; }
+
     public string? CustomerPhone { get; set; }
 
     public int GuestCount { get; set; }

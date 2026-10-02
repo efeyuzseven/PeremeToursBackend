@@ -41,6 +41,16 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
+  MailSendingEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  DenturSmtpPasswordParameterArn:
+    Type: String
+    Default: arn:aws:ssm:eu-central-1:890571110014:parameter/dentur/avrasya/SMTP_PASSWORD
+    AllowedPattern: "arn:aws:ssm:[a-z0-9-]+:[0-9]{12}:parameter/.+"
   BackendImageTag:
     Type: String
     Default: bootstrap
@@ -283,6 +293,10 @@ Resources:
                   - !Ref EasyTicketApiKeySecret
                   - !Ref ZiraatPosSecret
                   - !GetAtt Database.MasterUserSecret.SecretArn
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameters
+                Resource: !Ref DenturSmtpPasswordParameterArn
 
   EcsTaskRole:
     Type: AWS::IAM::Role
@@ -451,7 +465,23 @@ Resources:
               Value: PeremeTours
             - Name: Payments__Ziraat__OrderPrefix
               Value: PRM
+            - Name: MailSettings__Enabled
+              Value: !Ref MailSendingEnabled
+            - Name: MailSettings__Server
+              Value: mail.denturonline.com
+            - Name: MailSettings__Port
+              Value: "587"
+            - Name: MailSettings__Username
+              Value: musterihizmetleri@denturonline.com
+            - Name: MailSettings__SenderEmail
+              Value: musterihizmetleri@denturonline.com
+            - Name: MailSettings__SenderName
+              Value: Dentur Pereme
+            - Name: MailSettings__WebsiteUrl
+              Value: https://d2bmjk2h6qp4lz.cloudfront.net
           Secrets:
+            - Name: MailSettings__Password
+              ValueFrom: !Ref DenturSmtpPasswordParameterArn
             - Name: Database__Password
               ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
             - Name: Jwt__Key

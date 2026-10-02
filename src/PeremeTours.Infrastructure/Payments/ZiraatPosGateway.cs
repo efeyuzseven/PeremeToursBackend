@@ -21,7 +21,8 @@ internal sealed record ZiraatFinalizationResult(
     string? AuthCode,
     string? HostReference,
     string? ErrorCode,
-    string? ErrorMessage
+    string? ErrorMessage,
+    string? ErrorDetailCode = null
 );
 
 internal interface IZiraatPosGateway
@@ -230,8 +231,9 @@ internal sealed class ZiraatPosGateway(
             approved,
             Value(document, "AuthCode"),
             Value(document, "HostLogKey"),
-            returnCode,
-            Value(document, "ErrMsg")
+            PaymentDiagnostics.SafeCode(returnCode, "BANK_DECLINED"),
+            Value(document, "ErrMsg"),
+            PaymentDiagnostics.SafeProviderCode(Value(document, "ERRORCODE"))
         );
     }
 

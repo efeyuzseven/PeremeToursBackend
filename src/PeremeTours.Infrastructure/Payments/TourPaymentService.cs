@@ -34,13 +34,13 @@ internal sealed class TourPaymentService(
     public async Task<TourPaymentStatus?> GetStatusAsync(Guid attemptId, CancellationToken cancellationToken)
     {
         if (attemptId == Guid.Empty) return null;
-        var ticket = await dbContext.TourTickets.AsNoTracking().Include(item => item.Passengers)
+        var ticket = await dbContext.TourTickets.AsNoTracking().Include(item => item.Passengers).Include(item => item.PaymentEmail)
             .SingleOrDefaultAsync(item => item.PaymentAttemptId == attemptId, cancellationToken);
         return ticket is null ? null : new TourPaymentStatus(ticket.TicketCode, ticket.Amount, ticket.Currency,
             ticket.PaymentStatus.ToString(), ticket.TicketingStatus.ToString(),
             ticket.TicketingStatus == TicketingStatus.Issued
                 ? ticket.Passengers.OrderBy(item => item.Sequence).Select(item => new IssuedTourTicket(item.Pnr, item.ExternalTicketGuid)).ToArray()
-                : []);
+                : [], ticket.PaymentEmail?.Status.ToString());
     }
 
     public async Task<StartTourPaymentResult> StartAsync(StartTourPaymentCommand command, CancellationToken cancellationToken)
@@ -72,6 +72,7 @@ internal sealed class TourPaymentService(
             Id = Guid.NewGuid(), TicketCode = CreateOrderId(now), PaymentAttemptId = command.AttemptId,
             TourName = quote.TourName.Trim(), TourDate = quote.TourDate, DepartureTime = quote.DepartureTime,
             CustomerName = command.CustomerName.Trim(), CustomerEmail = command.CustomerEmail.Trim().ToLowerInvariant(),
+            CustomerLanguage = command.Language == "en" ? "en" : "tr", DeparturePortName = quote.PortName,
             CustomerPhone = command.CustomerPhone?.Trim(), GuestCount = quote.GuestCount,
             Amount = quote.Amount, Currency = "TRY", Status = TicketStatus.Pending, Channel = TicketChannel.Web,
             PaymentStatus = TicketPaymentStatus.Pending, TicketingStatus = TicketingStatus.Pending,
@@ -108,6 +109,8 @@ internal sealed class TourPaymentService(
             ticket.PaymentFailureCode = "GATEWAY_START_FAILED";
             ticket.PaymentFailureMessage = "Banka doğrulaması başlatılamadı.";
             ticket.UpdatedAtUtc = timeProvider.GetUtcNow();
+            PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Payment, "GATEWAY_START_FAILED",
+                ticket.PaymentFailureMessage, ticket.UpdatedAtUtc);
             await dbContext.SaveChangesAsync(CancellationToken.None);
             throw new PaymentGatewayException("Banka doğrulaması başlatılamadı.");
         }
@@ -127,11 +130,17 @@ internal sealed class TourPaymentService(
         var validationError = ValidateCallback(ticket, fields);
         if (validationError is not null)
         {
-            await dbContext.TourTickets.Where(item => item.Id == ticket.Id && item.PaymentStatus == TicketPaymentStatus.Pending)
+            var invalidated = await dbContext.TourTickets.Where(item => item.Id == ticket.Id && item.PaymentStatus == TicketPaymentStatus.Pending)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.PaymentStatus, TicketPaymentStatus.Failed)
                     .SetProperty(item => item.PaymentFailureCode, "CALLBACK_VALIDATION_FAILED")
                     .SetProperty(item => item.PaymentFailureMessage, validationError)
                     .SetProperty(item => item.UpdatedAtUtc, timeProvider.GetUtcNow()), cancellationToken);
+            if (invalidated > 0)
+            {
+                PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Payment,
+                    "CALLBACK_VALIDATION_FAILED", validationError, timeProvider.GetUtcNow());
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+            }
             return Failure(ticket.TicketCode, validationError);
         }
         var claimed = await dbContext.TourTickets.Where(item => item.Id == ticket.Id && item.PaymentStatus == TicketPaymentStatus.Pending)
@@ -150,16 +159,25 @@ internal sealed class TourPaymentService(
             if (!result.IsApproved)
             {
                 tracked.PaymentStatus = TicketPaymentStatus.Failed;
-                tracked.PaymentFailureCode = Limit(result.ErrorCode ?? "BANK_DECLINED", 64);
-                tracked.PaymentFailureMessage = "Ödeme banka tarafından onaylanmadı.";
+                tracked.PaymentFailureCode = PaymentDiagnostics.SafeCode(result.ErrorCode, "BANK_DECLINED");
+                tracked.PaymentFailureMessage = PaymentDiagnostics.BankMessage(result);
+                PaymentDiagnostics.Add(dbContext, tracked.Id, TicketErrorStage.Payment,
+                    tracked.PaymentFailureCode, tracked.PaymentFailureMessage, tracked.UpdatedAtUtc, result.ErrorDetailCode);
                 await dbContext.SaveChangesAsync(CancellationToken.None);
                 LogState(logger, _options.ApplicationName, ticket.TicketCode, "Declined", null);
-                return Failure(ticket.TicketCode, tracked.PaymentFailureMessage);
+                return Failure(ticket.TicketCode, "Ödeme banka tarafından onaylanmadı.");
             }
             tracked.PaymentStatus = TicketPaymentStatus.Paid;
             tracked.PaidAtUtc = timeProvider.GetUtcNow();
             tracked.PaymentFailureCode = null;
             tracked.PaymentFailureMessage = null;
+            // The outbox entry and Paid state commit together; duplicate callbacks cannot queue another mail.
+            dbContext.PaymentEmails.Add(new PaymentEmail
+            {
+                TicketId = tracked.Id, Status = PaymentEmailStatus.Queued,
+                CreatedAtUtc = tracked.PaidAtUtc.Value.UtcDateTime,
+                NextAttemptAtUtc = tracked.PaidAtUtc.Value.UtcDateTime,
+            });
             // Persist the bank result BEFORE ticket issuance; a ticket failure must never allow another charge.
             await dbContext.SaveChangesAsync(CancellationToken.None);
             LogState(logger, _options.ApplicationName, ticket.TicketCode, "Paid", null);
@@ -169,11 +187,39 @@ internal sealed class TourPaymentService(
         catch
         {
             // Auth may have succeeded despite a timeout. Never reset to Pending or resubmit Auth automatically.
-            await dbContext.TourTickets.Where(item => item.Id == ticket.Id && item.PaymentStatus == TicketPaymentStatus.Processing)
+            // Discard tracked changes before recording failures; do not accidentally overwrite the persisted bank state.
+            dbContext.ChangeTracker.Clear();
+            var uncertain = await dbContext.TourTickets.Where(item => item.Id == ticket.Id && item.PaymentStatus == TicketPaymentStatus.Processing)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.PaymentStatus, TicketPaymentStatus.ReviewRequired)
                     .SetProperty(item => item.PaymentFailureCode, "BANK_RESULT_UNKNOWN")
                     .SetProperty(item => item.PaymentFailureMessage, "Banka sonucu kontrol edilmeli; tekrar tahsilat yapılmamalı.")
                     .SetProperty(item => item.UpdatedAtUtc, timeProvider.GetUtcNow()), CancellationToken.None);
+            if (uncertain > 0)
+            {
+                PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Payment, "BANK_RESULT_UNKNOWN",
+                    "Banka sonucu belirsiz. Yeni tahsilat yapmayın; banka kaydını sipariş koduyla kontrol edin.", timeProvider.GetUtcNow());
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+            }
+            else
+            {
+                var paid = await dbContext.TourTickets.AsNoTracking().SingleAsync(item => item.Id == ticket.Id, CancellationToken.None);
+                if (paid.PaymentStatus == TicketPaymentStatus.Paid)
+                {
+                    var unfinished = await dbContext.TourTickets.Where(item => item.Id == ticket.Id
+                            && (item.TicketingStatus == TicketingStatus.Pending || item.TicketingStatus == TicketingStatus.Processing))
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.TicketingStatus, TicketingStatus.ReviewRequired)
+                            .SetProperty(item => item.TicketingFailureCode, "PROVIDER_RESULT_UNKNOWN")
+                            .SetProperty(item => item.UpdatedAtUtc, timeProvider.GetUtcNow()), CancellationToken.None);
+                    if (unfinished > 0)
+                    {
+                        PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Ticketing, "PROVIDER_RESULT_UNKNOWN",
+                            "Ödeme alındı; bilet kesim sonucu belirsiz. EasyTicket kaydı kontrol edilmeli. Yeni tahsilat yapmayın.", timeProvider.GetUtcNow());
+                        await dbContext.SaveChangesAsync(CancellationToken.None);
+                        paid.TicketingStatus = TicketingStatus.ReviewRequired;
+                    }
+                    return PaidResult(paid);
+                }
+            }
             LogState(logger, _options.ApplicationName, ticket.TicketCode, "ReviewRequired", null);
             return Failure(ticket.TicketCode, "Ödeme sonucu kontrol ediliyor. Tekrar ödeme yapmayın; destek ekibiyle iletişime geçin.");
         }
@@ -207,6 +253,9 @@ internal sealed class TourPaymentService(
             ticket.TicketingFailureCode = "PROVIDER_RESULT_UNKNOWN";
         }
         ticket.UpdatedAtUtc = timeProvider.GetUtcNow();
+        if (ticket.TicketingFailureCode is not null)
+            PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Ticketing, ticket.TicketingFailureCode,
+                "Ödeme alındı; EasyTicket biletleri tam olarak doğrulanamadı. Yeni tahsilat yapmayın; sağlayıcı kaydı kontrol edilmeli.", ticket.UpdatedAtUtc);
         await dbContext.SaveChangesAsync(CancellationToken.None);
         LogState(logger, _options.ApplicationName, ticket.TicketCode, ticket.TicketingStatus.ToString(), null);
     }

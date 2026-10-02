@@ -145,7 +145,7 @@ yapmaz. Onay önce `Paid` olarak kaydedilir, ardından EasyTicket
 [sağlayıcının Swagger'ı](https://easyticketapi.denturonline.com/swagger/v1/swagger.json)
 ve Dentur Avrasya entegrasyonuyla karşılaştırılmıştır. Bu API bir kontenjan
 bekletme/ön rezervasyon ucu değildir. Ancak tüm yolcuların GUID ve PNR'ı alınınca
-rezervasyon `Confirmed`, biletleme `Issued` olur. E-posta gönderimi bu akışa dahil değildir.
+rezervasyon `Confirmed`, biletleme `Issued` olur. Başarılı ödeme bilgisi ayrıca kalıcı mail kuyruğuna alınır.
 
 Belirsiz banka yanıtında ödeme `ReviewRequired` olur; tekrar tahsilat yapılmaz.
 EasyTicket başarısız/belirsiz yanıtında ödeme `Paid` kalır, rezervasyon `Pending`,
@@ -165,3 +165,41 @@ Bir postMessage başarı kaydı sayılmaz: gerçek iframe kaynağı kontrol edil
 sonuç sunucudan okunur. Sekme yenilenirse yalnızca opak işlem token'ı sessionStorage
 üzerinden geri alınır; kart/yolcu bilgileri saklanmaz. Başarısızlığı kesinleşmeyen
 işlem için yeni ödeme önerilmez. Ödeme kart alanları sadece fiyat onay ekranında açılır.
+
+## Ödeme e-postası ve hata kayıtları
+
+`Paid` durumu ile tekil `PaymentEmails` kaydı aynı veritabanı işlemiyle kaydedilir.
+ECS içindeki arka plan işleyicisi rezervasyonun **iletişim e-posta adresine**
+Türkçe/İngilizce, mobil uyumlu HTML ve düz metin gönderir. SMTP kesintisi banka
+durumunu değiştirmez veya yeni tahsilat/bilet satışı başlatmaz. Bilet kesimi
+doğrulanmadıysa e-postada yalnızca ödeme alındığı ve biletlerin kontrol edildiği belirtilir.
+PNR sadece `Issued` durumda gösterilir; kimlik, pasaport, doğum tarihi, kart ve CVC mailde yer almaz.
+
+`MailSettings` ayarları kullanılır. AWS, Dentur Avrasya ile aynı gönderici hesabını
+ve mevcut `/dentur/avrasya/SMTP_PASSWORD` SSM SecureString kaydını referans alır;
+şifre kaynak koda veya task definition içindeki düz metin environment listesine yazılmaz.
+587/STARTTLS veya 465/TLS zorunludur; sertifika/hostname doğrulaması kapatılamaz.
+Mail ayarları doğruysa ve güvenli bağlantı doğrulandıysa gönderimi etkinleştirin:
+
+```powershell
+dotnet run --project src/PeremeTours.Api -- --check-mail
+.\scripts\deploy-infrastructure.ps1 -MailSendingEnabled true
+```
+
+`--check-mail` sadece TLS bağlantısını kontrol eder; kullanıcı doğrulaması veya
+mail gönderimi yapmaz. AWS ortamında aynı komut mevcut ECS image'ı ile tek seferlik
+task olarak çalıştırılabilir. Gönderim kapalıyken yeni başarılı ödemeler kuyrukta korunur.
+Altyapı script'i açıkça parametre verilmedikçe mevcut POS/mail aktivasyon durumunu korur.
+
+Bağlantı kesintileri için en fazla dört mail denemesi yapılır. SMTP reddi veya
+sertifika/kullanıcı hatası güvenli, sabit açıklamayla kaydedilir. Gönderim sırasında
+sonuç belirsizse ya da worker gönderimi bitirmeden kapanırsa `ReviewRequired` olur;
+SMTP kaydı kontrol edilmeden otomatik yeniden gönderilmez. SMTP'nin kabulü inbox'a
+ulaşmayı garanti etmez; spam/bounce takibi gönderici mail sunucusunun sorumluluğundadır.
+
+Admin ekranı: `/admin/ticket-errors`; sadece Admin rolü erişebilir.
+API: `GET /api/v1/admin/ticket-errors?stage=Payment&page=1&pageSize=20&search=PRM-`.
+Ödeme, biletleme ve mail hataları ayrı filtrelenir; rezervasyon/hata koduyla aranır.
+Eski başarısız kayıtlar migration ile `IsHistorical=true` olarak taşınır; orijinal
+banka mesajı yoksa uydurulmaz. Eski başarılı ödemelere geriye dönük mail gönderilmez.
+Tur biletleri listesinde mailin kuyruk/gönderim/hata durumu da görünür.
