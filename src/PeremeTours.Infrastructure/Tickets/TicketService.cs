@@ -66,6 +66,16 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             return null;
         }
 
+        if (ticket.PaymentProvider is not null && (command.TourName is not null || command.TourDate is not null
+            || command.DepartureTime is not null || command.CustomerName is not null || command.CustomerEmail is not null
+            || command.GuestCount is not null || command.Amount is not null
+            || (command.Status is not null && !(command.Status == TicketStatus.Used
+                && ticket.Status == TicketStatus.Confirmed && ticket.PaymentStatus == TicketPaymentStatus.Paid
+                && ticket.TicketingStatus == TicketingStatus.Issued))))
+        {
+            throw new TicketUpdateValidationException("Banka işlemi ve EasyTicket bileti manuel olarak değiştirilemez. İptal/iade ayrı bir banka ve bilet kontrolü gerektirir.");
+        }
+
         if (command.TourName is not null)
         {
             ticket.TourName = command.TourName.Trim();
@@ -119,7 +129,11 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             ticket.Channel,
             ticket.PaymentStatus,
             ticket.CreatedAtUtc,
-            ticket.UpdatedAtUtc
+            ticket.UpdatedAtUtc,
+            ticket.TicketingStatus,
+            ticket.ExternalVoucherGuid,
+            ticket.TicketingFailureCode,
+            ticket.PaymentFailureCode
         );
 
     private static string CreateTicketCode(DateTimeOffset now) =>

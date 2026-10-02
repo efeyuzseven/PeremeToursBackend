@@ -57,21 +57,28 @@ public sealed class AdminTicketsController(ITicketService ticketService)
         CancellationToken cancellationToken
     )
     {
-        var ticket = await ticketService.UpdateAsync(
-            id,
-            new UpdateTicketCommand(
-                request.TourName,
-                request.TourDate,
-                request.DepartureTime,
-                request.CustomerName,
-                request.CustomerEmail,
-                request.GuestCount,
-                request.Amount,
-                request.Status
-            ),
-            cancellationToken
-        );
-        return ticket is null ? NotFound() : Ok(ticket);
+        try
+        {
+            var ticket = await ticketService.UpdateAsync(
+                id,
+                new UpdateTicketCommand(
+                    request.TourName,
+                    request.TourDate,
+                    request.DepartureTime,
+                    request.CustomerName,
+                    request.CustomerEmail,
+                    request.GuestCount,
+                    request.Amount,
+                    request.Status
+                ),
+                cancellationToken
+            );
+            return ticket is null ? NotFound() : Ok(ticket);
+        }
+        catch (TicketUpdateValidationException exception)
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Bilet değiştirilemez", detail: exception.Message);
+        }
     }
 }
 
@@ -93,7 +100,7 @@ public sealed class CreateTicketRequest
     [Range(1, 100)]
     public int GuestCount { get; init; }
 
-    [Range(typeof(decimal), "0.01", "9999999999")]
+    [Range(typeof(decimal), "0.01", "9999999999", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public decimal Amount { get; init; }
 
     public TicketStatus Status { get; init; } = TicketStatus.Confirmed;
@@ -119,7 +126,7 @@ public sealed class UpdateTicketRequest
     [Range(1, 100)]
     public int? GuestCount { get; init; }
 
-    [Range(typeof(decimal), "0.01", "9999999999")]
+    [Range(typeof(decimal), "0.01", "9999999999", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public decimal? Amount { get; init; }
 
     public TicketStatus? Status { get; init; }

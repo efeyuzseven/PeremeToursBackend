@@ -32,7 +32,8 @@ public sealed record TourQuote(
     int GuestCount,
     decimal Amount,
     string Currency,
-    DateTimeOffset CheckedAtUtc
+    DateTimeOffset CheckedAtUtc,
+    int ExternalTripId = 0
 );
 
 public interface ITourBookingService

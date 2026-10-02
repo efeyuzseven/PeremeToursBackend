@@ -35,6 +35,12 @@ internal sealed class TourTicketConfiguration : IEntityTypeConfiguration<TourTic
         builder.HasIndex(ticket => ticket.TourDate);
         builder.HasIndex(ticket => ticket.PaymentStatus);
         builder.HasIndex(ticket => ticket.BankHostReference);
+        builder.HasIndex(ticket => ticket.PaymentAttemptId).IsUnique();
+        builder.Property(ticket => ticket.TicketingStatus).HasConversion<string>().HasMaxLength(32);
+        builder.Property(ticket => ticket.ExternalVoucherGuid).HasMaxLength(128);
+        builder.Property(ticket => ticket.TicketingFailureCode).HasMaxLength(64);
+        builder.HasMany(ticket => ticket.Passengers).WithOne().HasForeignKey(passenger => passenger.TourTicketId)
+            .OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(ticket => ticket.User)
             .WithMany()
             .HasForeignKey(ticket => ticket.UserId)

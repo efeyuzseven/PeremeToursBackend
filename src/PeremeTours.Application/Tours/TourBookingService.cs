@@ -80,7 +80,8 @@ public sealed class TourBookingService(
             lines.Sum(item => item.Quantity),
             lines.Sum(item => item.Amount),
             "TRY",
-            now
+            now,
+            departure.ExternalTripId > 0 ? departure.ExternalTripId : departure.ExternalId
         );
     }
 }

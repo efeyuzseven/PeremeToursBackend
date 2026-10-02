@@ -32,6 +32,16 @@ public sealed class TourTicket
 
     public TicketPaymentStatus PaymentStatus { get; set; }
 
+    public Guid? PaymentAttemptId { get; set; }
+
+    public TicketingStatus TicketingStatus { get; set; }
+
+    public string? ExternalVoucherGuid { get; set; }
+
+    public string? TicketingFailureCode { get; set; }
+
+    public List<TourPassenger> Passengers { get; set; } = [];
+
     public int? ExternalTourId { get; set; }
 
     public int? ExternalDeparturePortId { get; set; }

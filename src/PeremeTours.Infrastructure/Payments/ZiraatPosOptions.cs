@@ -27,4 +27,12 @@ public sealed class ZiraatPosOptions
     public string ApplicationName { get; init; } = "PeremeTours";
 
     public string OrderPrefix { get; init; } = "PRM";
+
+    public bool IsConfigured => Enabled && !string.IsNullOrWhiteSpace(MerchantId)
+        && !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(StoreKey)
+        && !string.IsNullOrWhiteSpace(ApiUser) && !string.IsNullOrWhiteSpace(ApiPassword)
+        && IsHttps(GatewayUrl) && IsHttps(ApiUrl) && IsHttps(CallbackUrl) && IsHttps(FrontendOrigin);
+
+    private static bool IsHttps(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps;
 }

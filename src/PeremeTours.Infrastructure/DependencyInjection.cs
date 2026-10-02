@@ -43,14 +43,24 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITourPaymentService, TourPaymentService>();
+        services.AddSingleton<ThreeDSecureFrameStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITourBookingService, TourBookingService>();
         services.Configure<ZiraatPosOptions>(
             configuration.GetSection(ZiraatPosOptions.SectionName)
         );
         services.AddHttpClient<IZiraatPosGateway, ZiraatPosGateway>(client =>
-            client.Timeout = TimeSpan.FromSeconds(30)
-        );
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.MaxResponseContentBufferSize = 1_000_000;
+        });
+        services.AddHttpClient<IEasyTicketSalesGateway, EasyTicketSalesGateway>((provider, client) =>
+        {
+            var easyTicket = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<EasyTicketOptions>>().Value;
+            if (Uri.TryCreate(easyTicket.BaseUrl, UriKind.Absolute, out var baseUri)) client.BaseAddress = baseUri;
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.MaxResponseContentBufferSize = 131_072;
+        });
         services.AddScoped<ITourContentService, TourContentService>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
         services.AddScoped<

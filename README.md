@@ -42,6 +42,8 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `POST /api/v1/admin/tickets`
 - `PATCH /api/v1/admin/tickets/{id}`
 - `POST /api/v1/payments/tour/initialize`
+- `GET /api/v1/payments/availability`
+- `GET /api/v1/payments/tour/status` (`X-Payment-Token` başlığı)
 - `POST /api/v1/payments/ziraat/callback`
 - `GET /api/v1/system/health`
 
@@ -117,9 +119,10 @@ Secrets Manager'a kaydedilir:
 .\scripts\set-ziraat-pos-settings.ps1
 ```
 
-Ödeme özelliği varsayılan olarak kapalıdır. Banka testleri, callback doğrulaması
-ve bilet üretim akışı birlikte onaylanmadan açılmamalıdır. Hazır olduğunda
-altyapı açık parametreyle güncellenir:
+Ödeme özelliği yerel yapılandırmada varsayılan olarak kapalıdır. AWS ortamında
+açmak için aşağıdaki parametre kullanılır. Yapılandırılan banka URL'leri CANLI POS
+adresleridir; uygulamanın AWS ortamının `test` olarak adlandırılması tahsilatı test
+işlemine dönüştürmez. Kart sahibiyle kontrollü bir 3D Secure alımı ayrıca doğrulanmalıdır:
 
 ```powershell
 .\scripts\deploy-infrastructure.ps1 -ZiraatPaymentEnabled true
@@ -127,3 +130,38 @@ altyapı açık parametreyle güncellenir:
 
 Kart numarası, güvenlik kodu ve POS parolaları veritabanına veya uygulama
 loglarına yazılmaz.
+
+Ödeme başlatma isteği, sefer/tarih, birden fazla bilet tipi, her biletin yolcusu,
+iletişim bilgileri, KVKK metninin okunduğu onayı, son gösterilen `expectedAmount`,
+rastgele `attemptId` ve geçici kart bilgilerini alır. Tutar sunucuda EasyTicket'tan
+tekrar hesaplanır; fiyat değişirse `409` döner ve tahsilat başlatılmaz. Aynı
+`attemptId` için yalnızca bir kayıt açılabilir. Kimlik/doğum bilgileri biletleme
+için private, şifreli RDS'de tutulur; public durum ucu kişisel bilgi döndürmez.
+
+İmzalı banka callback'i tutar, mağaza, para birimi ve tam 3D doğrulamasını kontrol
+eder. Callback atomik olarak sahiplenilir; yinelenen callback yeniden `Auth`
+yapmaz. Onay önce `Paid` olarak kaydedilir, ardından EasyTicket
+`POST /api/data/web-bilet-satis` ucu bir kez çağrılır. Satış sözleşmesi
+[sağlayıcının Swagger'ı](https://easyticketapi.denturonline.com/swagger/v1/swagger.json)
+ve Dentur Avrasya entegrasyonuyla karşılaştırılmıştır. Bu API bir kontenjan
+bekletme/ön rezervasyon ucu değildir. Ancak tüm yolcuların GUID ve PNR'ı alınınca
+rezervasyon `Confirmed`, biletleme `Issued` olur. E-posta gönderimi bu akışa dahil değildir.
+
+Belirsiz banka yanıtında ödeme `ReviewRequired` olur; tekrar tahsilat yapılmaz.
+EasyTicket başarısız/belirsiz yanıtında ödeme `Paid` kalır, rezervasyon `Pending`,
+biletleme `ReviewRequired` olur. Bu kayıtlar admin panelinde görünür; banka ve
+EasyTicket sipariş/PO koduyla MANUEL kontrol edilmelidir. Belirsiz satışta otomatik
+tekrar deneme, otomatik iade veya otomatik iptal yoktur. Banka onayından sonra
+sunucu kapanırsa takılı `Processing`/`Pending` kayıtları da aynı şekilde kontrol edilir.
+
+Backend, banka HTML'ini en fazla 5 dakika ve 8 MB boyut sınırlı, RAM'deki tek
+kullanımlık token ile sunar; veritabanına/kalıcı depolamaya yazmaz. Bu sürümün
+frame deposu tek ECS instance'ı içindir; yatay ölçekleme öncesinde ayrıca ele alınmalıdır.
+Frontend banka sayfasını frontend'den FARKLI API origin'inde,
+`allow-forms allow-scripts allow-same-origin` sandbox'lı iframe'de açar.
+`allow-same-origin`, bankanın kendi origin'ine yönlendikten sonra cookie/XHR
+kullanabilmesi içindir; API origin'i frontend DOM'una/sessionStorage'a erişemez.
+Bir postMessage başarı kaydı sayılmaz: gerçek iframe kaynağı kontrol edilir ve
+sonuç sunucudan okunur. Sekme yenilenirse yalnızca opak işlem token'ı sessionStorage
+üzerinden geri alınır; kart/yolcu bilgileri saklanmaz. Başarısızlığı kesinleşmeyen
+işlem için yeni ödeme önerilmez. Ödeme kart alanları sadece fiyat onay ekranında açılır.

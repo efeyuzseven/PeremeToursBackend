@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using PeremeTours.Application.Payments;
+using PeremeTours.Application.Tours;
 using PeremeTours.Infrastructure.Payments;
 
 namespace PeremeTours.Api.Controllers;
@@ -16,6 +17,7 @@ namespace PeremeTours.Api.Controllers;
 [Route("api/v1/payments")]
 public sealed class PaymentsController(
     ITourPaymentService paymentService,
+    ThreeDSecureFrameStore frameStore,
     IOptions<ZiraatPosOptions> options,
     ILogger<PaymentsController> logger
 ) : ControllerBase
@@ -34,32 +36,57 @@ public sealed class PaymentsController(
         );
     private readonly ZiraatPosOptions _options = options.Value;
 
+    [HttpGet("availability")]
+    public ActionResult<PaymentAvailability> Availability()
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(paymentService.GetAvailability());
+    }
+
+    [HttpGet("tour/status")]
+    public async Task<ActionResult<TourPaymentStatus>> Status(
+        [FromHeader(Name = "X-Payment-Token")] Guid attemptId, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        var status = await paymentService.GetStatusAsync(attemptId, cancellationToken);
+        return status is null ? NotFound() : Ok(status);
+    }
+
     [HttpPost("tour/initialize")]
+    [RequestSizeLimit(32_768)]
     [EnableRateLimiting("payment-start")]
-    [ProducesResponseType<StartTourPaymentResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType<StartTourPaymentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<StartTourPaymentResult>> Initialize(
+    public async Task<ActionResult<StartTourPaymentResponse>> Initialize(
         StartTourPaymentRequest request,
         CancellationToken cancellationToken
     )
     {
         using var logScope = CreatePaymentLogScope();
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        if (request.Tickets.Any(item => item is null) || request.Passengers.Any(item => item is null))
+            return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Eksik bilet veya yolcu bilgisi");
         try
         {
             Guid? userId = Guid.TryParse(
                 User.FindFirstValue(ClaimTypes.NameIdentifier),
                 out var parsedUserId
             ) ? parsedUserId : null;
-            return Ok(await paymentService.StartAsync(
+            var result = await paymentService.StartAsync(
                 new StartTourPaymentCommand(
                     request.ExternalTourId,
                     request.ExternalDeparturePortId,
                     request.ExternalDepartureId,
-                    request.ExternalTripId,
-                    request.ExternalPriceId,
                     request.TourDate,
-                    request.GuestCount,
+                    request.Tickets.Select(item => new TourTicketSelection(item.ExternalPriceId, item.Quantity)).ToArray(),
+                    request.Passengers.Select(item => new PaymentPassenger(item.ExternalPriceId,
+                        item.FirstName, item.LastName, item.Gender, item.Nationality, item.IdentityNumber, item.BirthDate)).ToArray(),
+                    request.ExpectedAmount,
+                    request.AttemptId,
+                    request.PrivacyNoticeAccepted,
                     request.CustomerName,
                     request.CustomerEmail,
                     request.CustomerPhone,
@@ -74,7 +101,19 @@ public sealed class PaymentsController(
                     userId
                 ),
                 cancellationToken
-            ));
+            );
+            var frameToken = frameStore.Publish(result.ThreeDSecureHtml);
+            return Ok(new StartTourPaymentResponse(result.TicketId, result.TicketCode, result.Amount, result.Currency,
+                $"/api/v1/payments/tour/3d/{frameToken:D}"));
+        }
+        catch (PaymentConflictException exception)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: "Ödeme yeniden kontrol edilmeli", detail: exception.Message);
+        }
+        catch (TourCatalogUnavailableException)
+        {
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Tur bilgileri alınamıyor",
+                detail: "Güncel sefer ve fiyat doğrulanamadı. Ödeme başlatılmadı.");
         }
         catch (PaymentValidationException exception)
         {
@@ -92,15 +131,35 @@ public sealed class PaymentsController(
                 detail: exception.Message
             );
         }
-        catch (PaymentGatewayException exception)
+        catch (PaymentGatewayException)
         {
-            LogInitializeFailed(logger, exception);
+            LogInitializeFailed(logger, null);
             return Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "Bankaya ulaşılamıyor",
                 detail: "Ödeme işlemi şu anda başlatılamıyor. Lütfen kısa süre sonra tekrar deneyin."
             );
         }
+    }
+
+    [HttpGet("tour/3d/{token:guid}")]
+    [Produces("text/html")]
+    public IActionResult BankFrame(Guid token)
+    {
+        var html = frameStore.Consume(token);
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers.Pragma = "no-cache";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+        if (Uri.TryCreate(_options.FrontendOrigin, UriKind.Absolute, out var origin))
+            Response.Headers.ContentSecurityPolicy = $"frame-ancestors {origin.GetLeftPart(UriPartial.Authority)}";
+        if (html is null)
+        {
+            Response.StatusCode = StatusCodes.Status410Gone;
+            return Content("<!doctype html><html lang=\"tr\"><meta charset=\"utf-8\"><p>Banka ekranının süresi doldu. İşlem sonucunu rezervasyon ekranından kontrol edin; tekrar ödeme başlatmayın.</p></html>", "text/html; charset=utf-8");
+        }
+        return Content(html, "text/html; charset=utf-8");
     }
 
     [HttpPost("ziraat/callback")]
@@ -135,7 +194,7 @@ public sealed class PaymentsController(
                 or PaymentGatewayException
         )
         {
-            LogCallbackFailed(logger, exception);
+            LogCallbackFailed(logger, null);
             result = new CompleteTourPaymentResult(
                 false,
                 null,
@@ -200,6 +259,8 @@ public sealed class PaymentsController(
     }
 }
 
+public sealed record StartTourPaymentResponse(Guid TicketId, string TicketCode, decimal Amount, string Currency, string ThreeDSecureUrl);
+
 public sealed class StartTourPaymentRequest
 {
     [Range(1, int.MaxValue)]
@@ -211,16 +272,20 @@ public sealed class StartTourPaymentRequest
     [Range(1, int.MaxValue)]
     public int ExternalDepartureId { get; init; }
 
-    [Range(1, int.MaxValue)]
-    public int ExternalTripId { get; init; }
-
-    [Range(1, int.MaxValue)]
-    public int ExternalPriceId { get; init; }
-
     public DateOnly TourDate { get; init; }
 
-    [Range(1, 12)]
-    public int GuestCount { get; init; }
+    [Required, MinLength(1), MaxLength(12)]
+    public required List<PaymentTicketSelectionRequest> Tickets { get; init; }
+
+    [Required, MinLength(1), MaxLength(12)]
+    public required List<PaymentPassengerRequest> Passengers { get; init; }
+
+    [Range(typeof(decimal), "0.01", "99999999", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
+    public decimal ExpectedAmount { get; init; }
+
+    public Guid AttemptId { get; init; }
+
+    public bool PrivacyNoticeAccepted { get; init; }
 
     [Required, StringLength(160, MinimumLength = 2)]
     public required string CustomerName { get; init; }
@@ -228,8 +293,8 @@ public sealed class StartTourPaymentRequest
     [Required, EmailAddress, StringLength(320)]
     public required string CustomerEmail { get; init; }
 
-    [Phone, StringLength(32)]
-    public string? CustomerPhone { get; init; }
+    [Required, StringLength(32)]
+    public required string CustomerPhone { get; init; }
 
     [RegularExpression("^(tr|en)$")]
     public string Language { get; init; } = "tr";
@@ -254,4 +319,21 @@ public sealed class PaymentCardRequest
 
     [Range(2026, 2100)]
     public int ExpiryYear { get; init; }
+}
+
+public sealed class PaymentTicketSelectionRequest
+{
+    [Range(1, int.MaxValue)] public int ExternalPriceId { get; init; }
+    [Range(1, 12)] public int Quantity { get; init; }
+}
+
+public sealed class PaymentPassengerRequest
+{
+    [Range(1, int.MaxValue)] public int ExternalPriceId { get; init; }
+    [Required, StringLength(80, MinimumLength = 2)] public required string FirstName { get; init; }
+    [Required, StringLength(80, MinimumLength = 2)] public required string LastName { get; init; }
+    [Required, RegularExpression("^(male|female)$")] public required string Gender { get; init; }
+    [Required, RegularExpression("^(TR|foreign)$")] public required string Nationality { get; init; }
+    [Required, StringLength(30, MinimumLength = 3)] public required string IdentityNumber { get; init; }
+    public DateOnly BirthDate { get; init; }
 }

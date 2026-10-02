@@ -103,7 +103,7 @@ internal sealed class ZiraatPosGateway(
         };
         using var response = await httpClient.SendAsync(
             request,
-            HttpCompletionOption.ResponseHeadersRead,
+            HttpCompletionOption.ResponseContentRead,
             cancellationToken
         );
         if (!response.IsSuccessStatusCode)
@@ -186,7 +186,7 @@ internal sealed class ZiraatPosGateway(
 
         using var response = await httpClient.SendAsync(
             request,
-            HttpCompletionOption.ResponseHeadersRead,
+            HttpCompletionOption.ResponseContentRead,
             cancellationToken
         );
         if (!response.IsSuccessStatusCode)
@@ -214,8 +214,18 @@ internal sealed class ZiraatPosGateway(
 
         var bankResponse = Value(document, "Response");
         var returnCode = Value(document, "ProcReturnCode");
+        var approvedResponse = string.Equals(bankResponse, "Approved", StringComparison.OrdinalIgnoreCase);
+        var returnedOrder = Value(document, "OrderId");
+        if ((approvedResponse && (returnCode != "00" || string.IsNullOrWhiteSpace(Value(document, "AuthCode"))
+                || string.IsNullOrWhiteSpace(Value(document, "HostLogKey"))))
+            || (!string.IsNullOrWhiteSpace(returnedOrder) && returnedOrder != orderId)
+            || (!approvedResponse && !string.Equals(bankResponse, "Declined", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(bankResponse, "Error", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new PaymentGatewayException("Banka sonucu kesin olarak doğrulanamadı.");
+        }
         var approved = string.Equals(bankResponse, "Approved", StringComparison.OrdinalIgnoreCase)
-            && (string.IsNullOrWhiteSpace(returnCode) || returnCode == "00");
+            && returnCode == "00";
         return new ZiraatFinalizationResult(
             approved,
             Value(document, "AuthCode"),

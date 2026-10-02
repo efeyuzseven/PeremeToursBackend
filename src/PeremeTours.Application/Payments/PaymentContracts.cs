@@ -1,3 +1,5 @@
+using PeremeTours.Application.Tours;
+
 namespace PeremeTours.Application.Payments;
 
 public sealed record PaymentCard(
@@ -6,16 +8,29 @@ public sealed record PaymentCard(
     string SecurityCode,
     int ExpiryMonth,
     int ExpiryYear
-);
+)
+{
+    public override string ToString() => "PaymentCard [REDACTED]";
+}
+
+public sealed record PaymentPassenger(
+    int ExternalPriceId, string FirstName, string LastName, string Gender,
+    string Nationality, string IdentityNumber, DateOnly BirthDate
+)
+{
+    public override string ToString() => "PaymentPassenger [REDACTED]";
+}
 
 public sealed record StartTourPaymentCommand(
     int ExternalTourId,
     int ExternalDeparturePortId,
     int ExternalDepartureId,
-    int ExternalTripId,
-    int ExternalPriceId,
     DateOnly TourDate,
-    int GuestCount,
+    IReadOnlyList<TourTicketSelection> Tickets,
+    IReadOnlyList<PaymentPassenger> Passengers,
+    decimal ExpectedAmount,
+    Guid AttemptId,
+    bool PrivacyNoticeAccepted,
     string CustomerName,
     string CustomerEmail,
     string? CustomerPhone,
@@ -38,8 +53,18 @@ public sealed record CompleteTourPaymentResult(
     string Message
 );
 
+public sealed record PaymentAvailability(bool Enabled, string Provider);
+public sealed record IssuedTourTicket(string? Pnr, string? TicketGuid);
+public sealed record TourPaymentStatus(
+    string TicketCode, decimal Amount, string Currency, string PaymentStatus,
+    string TicketingStatus, IReadOnlyList<IssuedTourTicket> Tickets
+);
+
 public interface ITourPaymentService
 {
+    PaymentAvailability GetAvailability();
+    Task<TourPaymentStatus?> GetStatusAsync(Guid attemptId, CancellationToken cancellationToken);
+
     Task<StartTourPaymentResult> StartAsync(
         StartTourPaymentCommand command,
         CancellationToken cancellationToken
@@ -56,6 +81,8 @@ public sealed class PaymentConfigurationException(string message)
 
 public sealed class PaymentValidationException(string message)
     : Exception(message);
+
+public sealed class PaymentConflictException(string message) : Exception(message);
 
 public sealed class PaymentGatewayException(
     string message,

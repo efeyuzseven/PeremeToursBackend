@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="PeremeTours.UnitTests" />
     <ProjectReference Include="..\PeremeTours.Application\PeremeTours.Application.csproj" />
     <ProjectReference Include="..\PeremeTours.Domain\PeremeTours.Domain.csproj" />
   </ItemGroup>

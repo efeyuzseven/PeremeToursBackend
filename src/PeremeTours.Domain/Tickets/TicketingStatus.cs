@@ -1,12 +1,10 @@
 namespace PeremeTours.Domain.Tickets;
 
-public enum TicketPaymentStatus
+public enum TicketingStatus
 {
     NotRequired,
     Pending,
     Processing,
-    Paid,
-    Failed,
-    Refunded,
+    Issued,
     ReviewRequired,
 }

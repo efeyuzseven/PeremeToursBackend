@@ -17,7 +17,11 @@ public sealed record TicketSummary(
     TicketChannel Channel,
     TicketPaymentStatus PaymentStatus,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc
+    DateTimeOffset UpdatedAtUtc,
+    TicketingStatus TicketingStatus,
+    string? ExternalVoucherGuid,
+    string? TicketingFailureCode,
+    string? PaymentFailureCode
 );
 
 public sealed record CreateTicketCommand(
@@ -61,3 +65,5 @@ public interface ITicketService
         CancellationToken cancellationToken
     );
 }
+
+public sealed class TicketUpdateValidationException(string message) : Exception(message);
