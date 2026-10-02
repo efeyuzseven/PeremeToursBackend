@@ -9,10 +9,51 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $repoRoot
+$backendImageTag = "bootstrap"
+$backendDesiredCount = "0"
 
 aws sts get-caller-identity --region $Region --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "AWS oturumu açık değil. Önce 'aws login' çalıştırın."
+}
+
+$stack = aws cloudformation describe-stacks `
+  --stack-name $StackName `
+  --region $Region `
+  --output json `
+  --no-cli-pager 2>$null | ConvertFrom-Json
+if ($LASTEXITCODE -eq 0 -and $stack.Stacks.Count -gt 0) {
+  $outputs = @{}
+  foreach ($output in $stack.Stacks[0].Outputs) {
+    $outputs[$output.OutputKey] = $output.OutputValue
+  }
+  $service = aws ecs describe-services `
+    --cluster $outputs.ClusterName `
+    --services $outputs.BackendServiceName `
+    --region $Region `
+    --output json `
+    --no-cli-pager | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0) {
+    throw "Mevcut ECS servisi okunamadı."
+  }
+  if ($service.services.Count -gt 0) {
+    $backendDesiredCount = [string]$service.services[0].desiredCount
+    $taskDefinition = aws ecs describe-task-definition `
+      --task-definition $service.services[0].taskDefinition `
+      --region $Region `
+      --output json `
+      --no-cli-pager | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) {
+      throw "Mevcut ECS task tanımı okunamadı."
+    }
+    $container = $taskDefinition.taskDefinition.containerDefinitions |
+      Where-Object name -eq "peremetours-backend"
+    $imagePrefix = "$($outputs.BackendRepositoryUri):"
+    if ($null -eq $container -or -not $container.image.StartsWith($imagePrefix)) {
+      throw "Mevcut backend image etiketi belirlenemedi."
+    }
+    $backendImageTag = $container.image.Substring($imagePrefix.Length)
+  }
 }
 
 dotnet restore PeremeTours.slnx
@@ -31,7 +72,7 @@ aws cloudformation deploy `
   --stack-name $StackName `
   --region $Region `
   --capabilities CAPABILITY_NAMED_IAM `
-  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" "ZiraatPaymentEnabled=$ZiraatPaymentEnabled" `
+  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" "ZiraatPaymentEnabled=$ZiraatPaymentEnabled" "BackendImageTag=$backendImageTag" "BackendDesiredCount=$backendDesiredCount" `
   --tags Project=PeremeTours Environment=Test `
   --no-fail-on-empty-changeset `
   --no-cli-pager

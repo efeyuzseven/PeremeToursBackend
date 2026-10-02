@@ -41,6 +41,15 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
+  BackendImageTag:
+    Type: String
+    Default: bootstrap
+    AllowedPattern: "[A-Za-z0-9_][A-Za-z0-9._-]{0,127}"
+  BackendDesiredCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1
 
 Resources:
   BackendRepository:
@@ -387,7 +396,7 @@ Resources:
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: peremetours-backend
-          Image: !Sub ${BackendRepository.RepositoryUri}:bootstrap
+          Image: !Sub ${BackendRepository.RepositoryUri}:${BackendImageTag}
           Essential: true
           PortMappings:
             - ContainerPort: 8080
@@ -512,7 +521,7 @@ Resources:
     Properties:
       ServiceName: peremetours-backend-test
       Cluster: !Ref EcsClusterName
-      DesiredCount: 0
+      DesiredCount: !Ref BackendDesiredCount
       LaunchType: FARGATE
       PlatformVersion: LATEST
       TaskDefinition: !Ref BackendTaskDefinition
