@@ -110,6 +110,11 @@ public sealed class ToursController(
     )
     {
         Response.Headers.CacheControl = "no-store";
+        if (request.Tickets.Any(item => item is null))
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Rezervasyon seçimi geçersiz", detail: "Bilet tipi ve adet bilgileri eksik.");
+        }
         try
         {
             return Ok(await tourBookingService.QuoteAsync(new TourQuoteCommand(

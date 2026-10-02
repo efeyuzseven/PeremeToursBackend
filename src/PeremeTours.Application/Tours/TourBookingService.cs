@@ -17,7 +17,7 @@ public sealed class TourBookingService(
         if (command.ExternalTourId <= 0 || command.ExternalDeparturePortId <= 0
             || command.ExternalDepartureId <= 0 || command.Tickets is null
             || command.Tickets.Count is < 1 or > 12
-            || command.Tickets.Any(item => item.ExternalPriceId <= 0 || item.Quantity is < 1 or > 12)
+            || command.Tickets.Any(item => item is null || item.ExternalPriceId <= 0 || item.Quantity is < 1 or > 12)
             || command.Tickets.Sum(item => item.Quantity) > 12
             || command.Tickets.DistinctBy(item => item.ExternalPriceId).Count() != command.Tickets.Count)
         {

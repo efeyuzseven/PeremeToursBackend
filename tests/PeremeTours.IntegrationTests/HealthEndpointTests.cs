@@ -62,4 +62,18 @@ public sealed class HealthEndpointTests
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
+
+    [Fact]
+    public async Task MissingTicketSelectionReturnsBadRequestWithoutCallingUpstream()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/tours/quote", new
+        {
+            externalTourId = 2,
+            externalDeparturePortId = 3,
+            externalDepartureId = 8366,
+            tourDate = "2026-10-03",
+            tickets = new object?[] { null },
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }
