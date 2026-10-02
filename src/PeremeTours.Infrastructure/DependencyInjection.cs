@@ -43,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITourPaymentService, TourPaymentService>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<ITourBookingService, TourBookingService>();
         services.Configure<ZiraatPosOptions>(
             configuration.GetSection(ZiraatPosOptions.SectionName)
         );

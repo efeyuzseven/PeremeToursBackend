@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PeremeTours.Application.Tours;
 
 namespace PeremeTours.Api.Controllers;
@@ -11,6 +12,7 @@ namespace PeremeTours.Api.Controllers;
 public sealed class ToursController(
     ITourCatalogService tourCatalogService,
     ITourContentService tourContentService,
+    ITourBookingService tourBookingService,
     ILogger<ToursController> logger
 ) : ControllerBase
 {
@@ -76,6 +78,7 @@ public sealed class ToursController(
         CancellationToken cancellationToken = default
     )
     {
+        Response.Headers.CacheControl = "no-store";
         try
         {
             var availability = await tourCatalogService.GetAvailabilityAsync(
@@ -85,6 +88,42 @@ public sealed class ToursController(
                 cancellationToken
             );
             return availability is null ? NotFound() : Ok(availability);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (TourCatalogUnavailableException exception)
+        {
+            return CatalogUnavailable(exception);
+        }
+    }
+
+    [HttpPost("quote")]
+    [EnableRateLimiting("tour-quote")]
+    [ProducesResponseType<TourQuote>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<TourQuote>> Quote(
+        TourQuoteRequest request,
+        CancellationToken cancellationToken
+    )
+    {
+        Response.Headers.CacheControl = "no-store";
+        try
+        {
+            return Ok(await tourBookingService.QuoteAsync(new TourQuoteCommand(
+                request.ExternalTourId,
+                request.ExternalDeparturePortId,
+                request.ExternalDepartureId,
+                request.TourDate,
+                request.Tickets.Select(item => new TourTicketSelection(item.ExternalPriceId, item.Quantity)).ToArray()
+            ), cancellationToken));
+        }
+        catch (TourBookingValidationException exception)
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Rezervasyon seçimi geçersiz", detail: exception.Message);
         }
         catch (KeyNotFoundException)
         {
@@ -125,4 +164,30 @@ public sealed class ToursController(
             detail: exception.Message
         );
     }
+}
+
+public sealed class TourQuoteRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ExternalTourId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int ExternalDeparturePortId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int ExternalDepartureId { get; init; }
+
+    public DateOnly TourDate { get; init; }
+
+    [Required, MinLength(1), MaxLength(12)]
+    public required IReadOnlyList<TourQuoteTicketRequest> Tickets { get; init; }
+}
+
+public sealed class TourQuoteTicketRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ExternalPriceId { get; init; }
+
+    [Range(1, 12)]
+    public int Quantity { get; init; }
 }

@@ -70,6 +70,31 @@ public sealed class EasyTicketTourCatalogServiceTests
         Assert.Equal(new TimeOnly(18, 30), result.Departures.Single().Time);
     }
 
+    [Fact]
+    public async Task ActualUpstreamShapePreservesTicketTypesNotesAndRequestedPort()
+    {
+        var handler = new StubHttpMessageHandler(new Dictionary<string, string>
+        {
+            ["/api/Data/kategoriler"] = """[{"id":7,"kategori_Adi":"Sunset"}]""",
+            ["/api/Data/turlar/1"] = "[]",
+            ["/api/Data/turlar/2"] = "[]",
+            ["/api/Data/turlar/7"] = """[{"id":77,"tur_Adi":"Sunset"}]""",
+            ["/api/Data/turlar/9"] = "[]",
+            ["/api/Data/tur-detay-full?turId=77&kalkisLimanId=3&tipi=2"] =
+                """{"turBilgisi":{"id":77,"tur_Adi":"Sunset","bilet_Notu":"Transfer yok","bilet_Notu_En":"No transfer"},"fiyatlar":[{"fiyat_Id":234,"yolcu_Tipi_Id":8,"tekyon_Fiyat":10,"tl_Tekyon_Fiyat":350,"doviz_Tipi":"EUR","yolcu_Tipi":"İkramsız","yolcu_Tipi_En":"Without refreshments"}],"seferler":[{"id":8707,"tarih":"2026-10-03T00:00:00","saat":"16:30:00","kalkis_Liman_Adi":null}]}""",
+        });
+
+        var result = await CreateService(handler).GetAvailabilityAsync(77, 3, 2, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(3, result.Departures.Single().ExternalPortId);
+        Assert.Equal(8707, result.Departures.Single().ExternalId);
+        Assert.Equal("TRY", result.Prices.Single().Currency);
+        Assert.Equal(350m, result.Prices.Single().Amount);
+        Assert.Equal("Without refreshments", result.Prices.Single().PassengerTypeEn);
+        Assert.Equal("No transfer", result.BookingNoteEn);
+    }
+
     private static EasyTicketTourCatalogService CreateService(
         StubHttpMessageHandler handler
     )

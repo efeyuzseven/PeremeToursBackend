@@ -220,10 +220,12 @@ public sealed class EasyTicketTourCatalogService(
                     price.Tl_Tekyon_Fiyat > 0
                         ? price.Tl_Tekyon_Fiyat
                         : price.Tekyon_Fiyat,
-                    string.IsNullOrWhiteSpace(price.Doviz_Tipi)
+                    price.Tl_Tekyon_Fiyat > 0 || string.IsNullOrWhiteSpace(price.Doviz_Tipi)
+                        || string.Equals(price.Doviz_Tipi, "TL", StringComparison.OrdinalIgnoreCase)
                         ? "TRY"
                         : price.Doviz_Tipi.Trim().ToUpperInvariant(),
-                    price.Kdv
+                    price.Kdv,
+                    price.Yolcu_Tipi_En?.Trim()
                 ))
                 .ToList();
 
@@ -231,8 +233,8 @@ public sealed class EasyTicketTourCatalogService(
                 .Select(trip => new TourDeparture(
                     trip.Id,
                     trip.Sefer_Id,
-                    trip.Kalkis_Liman_Id,
-                    trip.Kalkis_Liman?.Trim() ?? string.Empty,
+                    trip.Kalkis_Liman_Id > 0 ? trip.Kalkis_Liman_Id : externalDeparturePortId,
+                    (trip.Kalkis_Liman ?? trip.Kalkis_Liman_Adi)?.Trim() ?? string.Empty,
                     trip.Sefer_Tarihi.HasValue
                         ? DateOnly.FromDateTime(trip.Sefer_Tarihi.Value)
                         : null,
@@ -246,7 +248,9 @@ public sealed class EasyTicketTourCatalogService(
                 detail.TurBilgisi.Kategori?.Trim() ?? string.Empty,
                 detail.TurBilgisi.Satis_Tipi,
                 prices,
-                departures
+                departures,
+                detail.TurBilgisi.Bilet_Notu?.Trim(),
+                detail.TurBilgisi.Bilet_Notu_En?.Trim()
             );
         }
         catch (TourCatalogUnavailableException)
@@ -420,6 +424,10 @@ public sealed class EasyTicketTourCatalogService(
         public string? Kategori { get; init; }
 
         public int Satis_Tipi { get; init; }
+
+        public string? Bilet_Notu { get; init; }
+
+        public string? Bilet_Notu_En { get; init; }
     }
 
     private sealed class EasyTicketTourDetailPrice
@@ -437,6 +445,8 @@ public sealed class EasyTicketTourCatalogService(
         public int Kdv { get; init; }
 
         public string? Yolcu_Tipi { get; init; }
+
+        public string? Yolcu_Tipi_En { get; init; }
     }
 
     private sealed class EasyTicketTourDetailTrip
@@ -448,6 +458,8 @@ public sealed class EasyTicketTourCatalogService(
         public int Kalkis_Liman_Id { get; init; }
 
         public string? Kalkis_Liman { get; init; }
+
+        public string? Kalkis_Liman_Adi { get; init; }
 
         public string? Sefer_Saati { get; set; }
 

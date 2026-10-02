@@ -28,7 +28,8 @@ public sealed record TourPrice(
     string PassengerType,
     decimal Amount,
     string Currency,
-    int TaxRate
+    int TaxRate,
+    string? PassengerTypeEn = null
 );
 
 public sealed record TourDeparture(
@@ -46,7 +47,9 @@ public sealed record TourAvailability(
     string CategoryName,
     int SaleType,
     IReadOnlyList<TourPrice> Prices,
-    IReadOnlyList<TourDeparture> Departures
+    IReadOnlyList<TourDeparture> Departures,
+    string? BookingNote = null,
+    string? BookingNoteEn = null
 );
 
 public interface ITourCatalogService
