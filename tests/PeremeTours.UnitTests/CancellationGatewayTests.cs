@@ -115,6 +115,88 @@ public sealed class CancellationGatewayTests
 
     private static EasyTicketCancellationGateway Provider(Handler handler) => new(new HttpClient(handler) { BaseAddress = new Uri("https://provider.example.test") },
         Options.Create(new EasyTicketOptions { BaseUrl = "https://provider.example.test", ApiKey = "mock-key" }));
+
+    [Theory]
+    [InlineData(408)]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(502)]
+    [InlineData(503)]
+    [InlineData(504)]
+    public async Task TransientReadOnlyPrecheckRetriesThenCancelsExactlyOnce(int status)
+    {
+        var gets = 0; var posts = 0;
+        using var handler = new Handler(request => {
+            if (request.Method == HttpMethod.Get)
+            {
+                gets++;
+                Assert.Contains("application/json", request.Headers.Accept.ToString());
+                if (gets == 1) return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status));
+                return Task.FromResult(Json(new { success = true, biletler = new[] { new { Guid = TicketGuid, Pnr = "MOCKPNR", ToplamTutar = 350m } } }));
+            }
+            posts++; return Task.FromResult(Json(new { success = true }));
+        });
+        await Provider(handler).CancelAsync(Ticket(), CancellationToken.None);
+        Assert.Equal(2, gets); Assert.Equal(1, posts);
+    }
+
+    [Fact]
+    public async Task UnavailablePrecheckStopsAfterThreeReadsWithoutSendingCancellation()
+    {
+        var calls = 0;
+        using var handler = new Handler(request => {
+            Assert.Equal(HttpMethod.Get, request.Method); calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        });
+        var error = await Assert.ThrowsAsync<CancellationGatewayException>(() => Provider(handler).CancelAsync(Ticket(), CancellationToken.None));
+        Assert.Equal("PROVIDER_CANCELLATION_UNAVAILABLE", error.Code); Assert.Equal(3, calls);
+    }
+
+    [Fact]
+    public async Task NetworkFailureRetriesOnlyTheReadOnlyPrecheck()
+    {
+        var gets = 0; var posts = 0;
+        using var handler = new Handler(request => {
+            if (request.Method == HttpMethod.Get)
+            {
+                if (++gets == 1) throw new HttpRequestException("Mock network error");
+                return Task.FromResult(Json(new { success = true, biletler = new[] { new { Guid = TicketGuid, Pnr = "MOCKPNR", ToplamTutar = 350m } } }));
+            }
+            posts++; return Task.FromResult(Json(new { success = true }));
+        });
+        await Provider(handler).CancelAsync(Ticket(), CancellationToken.None);
+        Assert.Equal(2, gets); Assert.Equal(1, posts);
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    [InlineData(404)]
+    public async Task PermanentPrecheckFailuresDoNotAutomaticallyRetry(int status)
+    {
+        var calls = 0;
+        using var handler = new Handler(request => {
+            Assert.Equal(HttpMethod.Get, request.Method); calls++;
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status));
+        });
+        var error = await Assert.ThrowsAsync<CancellationGatewayException>(() => Provider(handler).CancelAsync(Ticket(), CancellationToken.None));
+        Assert.Equal("PROVIDER_CANCELLATION_CHECK_FAILED", error.Code); Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task UnavailableCancellationPostIsNeverRetried()
+    {
+        var gets = 0; var posts = 0;
+        using var handler = new Handler(request => {
+            if (request.Method == HttpMethod.Get)
+            {
+                gets++; return Task.FromResult(Json(new { success = true, biletler = new[] { new { Guid = TicketGuid, Pnr = "MOCKPNR", ToplamTutar = 350m } } }));
+            }
+            posts++; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        });
+        var error = await Assert.ThrowsAsync<CancellationGatewayException>(() => Provider(handler).CancelAsync(Ticket(), CancellationToken.None));
+        Assert.Equal("PROVIDER_CANCELLATION_UNKNOWN", error.Code); Assert.Equal(1, gets); Assert.Equal(1, posts);
+    }
     private static HttpResponseMessage Json<T>(T value) => new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json") };
     private static HttpResponseMessage Xml(XDocument value) => new(HttpStatusCode.OK) { Content = new StringContent(value.ToString(), Encoding.UTF8, "text/xml") };
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler

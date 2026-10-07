@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PeremeTours.Application.Tickets;
 using PeremeTours.Domain.Tickets;
 using PeremeTours.Infrastructure.Persistence;
@@ -134,7 +136,76 @@ public sealed class TicketCancellationTests : IDisposable
     }
 
     private CancelTicketCommand Command() => new(_ticket.TicketCode, 350, "Test cancellation");
-    private PeremeToursDbContext Context() => new(new DbContextOptionsBuilder<PeremeToursDbContext>().UseSqlite(_connection).Options);
+
+    [Theory]
+    [InlineData("PROVIDER_CANCELLATION_CHECK_FAILED")]
+    [InlineData("PROVIDER_CANCELLATION_UNAVAILABLE")]
+    public async Task SafePrecheckFailureCanBeReclaimedAndRefundedExactlyOnce(string code)
+    {
+        _provider.CheckFailure = code;
+        var first = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.True(first!.CanRetry); Assert.Equal(0, _bank.Reversals);
+        using var second = Context();
+        Assert.True((await new TicketService(second).ListAsync(CancellationToken.None)).Single().CanRetryCancellation);
+        _provider.CheckFailure = null;
+        var result = await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal("Completed", result!.Status); Assert.False(result.CanRetry);
+        Assert.Equal(1, _bank.Reversals); Assert.Equal(2, _bank.Checks);
+        Assert.Single(await second.TicketCancellations.ToListAsync());
+        using var third = Context();
+        await Service(third).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal(1, _bank.Reversals); Assert.Equal(2, _provider.Calls);
+    }
+
+    [Fact]
+    public async Task ConcurrentSafeRetryClaimsOnlyOneExternalOperation()
+    {
+        _provider.CheckFailure = "PROVIDER_CANCELLATION_CHECK_FAILED";
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        _provider.CheckFailure = null;
+        _bank.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var second = Context(); using var third = Context();
+        var retry = Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        var duplicate = await Service(third).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal("Processing", duplicate!.Status); Assert.False(duplicate.CanRetry);
+        _bank.Gate.SetResult(); await retry;
+        Assert.Equal(2, _bank.Checks); Assert.Equal(2, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Theory]
+    [InlineData("provider-cancelled")]
+    [InlineData("bank-reference")]
+    [InlineData("completed")]
+    [InlineData("unknown")]
+    [InlineData("stale-processing")]
+    public async Task PrecheckCodeCannotReopenAmbiguousOrCompletedMutations(string fault)
+    {
+        var record = new TicketCancellation { TicketId = _ticket.Id, ActorUserId = _actor, Reason = "Test", Amount = 350,
+            Status = TicketCancellationStatus.ReviewRequired, FailureCode = "PROVIDER_CANCELLATION_CHECK_FAILED",
+            RequestedAtUtc = DateTime.UtcNow.AddMinutes(-10), UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-10) };
+        if (fault == "provider-cancelled") record.ProviderCancelledAtUtc = DateTime.UtcNow;
+        if (fault == "bank-reference") record.BankReversalTransactionId = "MOCK-REFUND";
+        if (fault == "completed") record.CompletedAtUtc = DateTime.UtcNow;
+        if (fault == "unknown") record.FailureCode = "BANK_REVERSAL_UNKNOWN";
+        if (fault == "stale-processing") record.Status = TicketCancellationStatus.Processing;
+        _db.TicketCancellations.Add(record); await _db.SaveChangesAsync();
+        var result = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.False(result!.CanRetry); Assert.Empty(_events);
+        Assert.False((await new TicketService(_db).ListAsync(CancellationToken.None)).Single().CanRetryCancellation);
+    }
+    private PeremeToursDbContext Context() => new(new DbContextOptionsBuilder<PeremeToursDbContext>()
+        .UseSqlite(_connection).ReplaceService<IModelCustomizer, SqliteTestModel>().Options);
+    public sealed class SqliteTestModel(ModelCustomizerDependencies dependencies) : ModelCustomizer(dependencies)
+    {
+        public override void Customize(ModelBuilder modelBuilder, DbContext context)
+        {
+            base.Customize(modelBuilder, context);
+            foreach (var entity in modelBuilder.Model.GetEntityTypes())
+                foreach (var property in entity.GetProperties())
+                    if (property.ClrType == typeof(DateTimeOffset) || property.ClrType == typeof(DateTimeOffset?))
+                        property.SetValueConverter(new DateTimeOffsetToBinaryConverter());
+        }
+    }
     private TicketCancellationService Service(PeremeToursDbContext db) => new(db, _bank, _provider, TimeProvider.System);
     private sealed class FakeBank : IBankCancellationGateway
     {
@@ -156,9 +227,11 @@ public sealed class TicketCancellationTests : IDisposable
     {
         public List<string> Events { get; set; } = [];
         public bool Fail { get; set; }
+        public string? CheckFailure { get; set; }
         public int Calls { get; private set; }
         public Task CancelAsync(TourTicket ticket, CancellationToken cancellationToken)
-        { Calls++; Events.Add("provider"); if (Fail) throw new CancellationGatewayException("PROVIDER_CANCELLATION_UNKNOWN"); return Task.CompletedTask; }
+        { Calls++; Events.Add("provider"); if (CheckFailure is not null) throw new CancellationGatewayException(CheckFailure);
+            if (Fail) throw new CancellationGatewayException("PROVIDER_CANCELLATION_UNKNOWN"); return Task.CompletedTask; }
     }
     public void Dispose() { _db.Dispose(); _connection.Dispose(); }
 }

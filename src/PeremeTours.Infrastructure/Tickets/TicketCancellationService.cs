@@ -12,7 +12,8 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
 {
     public async Task<TicketCancellationSummary?> GetAsync(Guid ticketId, CancellationToken cancellationToken)
     {
-        var record = await db.TicketCancellations.AsNoTracking().SingleOrDefaultAsync(item => item.TicketId == ticketId, cancellationToken);
+        var record = await db.TicketCancellations.AsNoTracking().Include(item => item.Ticket)
+            .SingleOrDefaultAsync(item => item.TicketId == ticketId, cancellationToken);
         return record is null ? null : Map(record);
     }
 
@@ -30,7 +31,8 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
             if (ticket is null) return null;
             if (command.TicketCode != ticket.TicketCode || command.ExpectedAmount != ticket.Amount)
                 throw new TicketCancellationValidationException("Bilet numarası veya tutar değişti. Listeyi yenileyip tekrar kontrol edin.");
-            if (ticket.Cancellation is not null) return Map(ticket.Cancellation); // Never replay provider or bank mutations.
+            if (ticket.Cancellation is not null && !ticket.Cancellation.CanRetryPrecheck())
+                return Map(ticket.Cancellation); // Never replay provider or bank mutations.
             if (ticket.PaymentProvider != "Ziraat" || ticket.Currency != "TRY" || ticket.Amount <= 0
                 || ticket.Status != TicketStatus.Confirmed || ticket.PaymentStatus != TicketPaymentStatus.Paid
                 || ticket.TicketingStatus != TicketingStatus.Issued || !Guid.TryParse(ticket.ExternalVoucherGuid, out _)
@@ -41,12 +43,37 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
             // Serialize with the Used action: claiming a cancellation and marking a ticket Used cannot both win.
             var locked = await db.TourTickets.Where(item => item.Id == ticketId && item.Status == TicketStatus.Confirmed
                     && item.PaymentStatus == TicketPaymentStatus.Paid && item.TicketingStatus == TicketingStatus.Issued
-                    && !db.TicketCancellations.Any(cancel => cancel.TicketId == item.Id))
+                    && (!db.TicketCancellations.Any(cancel => cancel.TicketId == item.Id)
+                        || db.TicketCancellations.Any(cancel => cancel.TicketId == item.Id
+                            && cancel.Status == TicketCancellationStatus.ReviewRequired
+                            && (cancel.FailureCode == "PROVIDER_CANCELLATION_CHECK_FAILED" || cancel.FailureCode == "PROVIDER_CANCELLATION_UNAVAILABLE")
+                            && cancel.ProviderCancelledAtUtc == null && cancel.BankReversalTransactionId == null && cancel.CompletedAtUtc == null)))
                 .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.UpdatedAtUtc, now), cancellationToken);
             if (locked != 1) throw new TicketCancellationValidationException("Bilet başka bir işlem tarafından değiştirildi. Listeyi yenileyin.");
-            record = new TicketCancellation { TicketId = ticketId, ActorUserId = actorUserId, Reason = command.Reason.Trim(),
-                Amount = ticket.Amount, Status = TicketCancellationStatus.Processing, RequestedAtUtc = now.UtcDateTime, UpdatedAtUtc = now.UtcDateTime };
-            db.TicketCancellations.Add(record);
+            if (ticket.Cancellation is { } previous)
+            {
+                if (previous.Amount != ticket.Amount)
+                    throw new TicketCancellationValidationException("İptal kaydının tutarı değişti. Kayıt kontrol edilmeli.");
+                var reclaimed = await db.TicketCancellations.Where(item => item.TicketId == ticketId
+                        && item.Status == TicketCancellationStatus.ReviewRequired
+                        && (item.FailureCode == "PROVIDER_CANCELLATION_CHECK_FAILED" || item.FailureCode == "PROVIDER_CANCELLATION_UNAVAILABLE")
+                        && item.ProviderCancelledAtUtc == null && item.BankReversalTransactionId == null && item.CompletedAtUtc == null)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Status, TicketCancellationStatus.Processing)
+                        .SetProperty(item => item.FailureCode, (string?)null).SetProperty(item => item.UpdatedAtUtc, now.UtcDateTime), cancellationToken);
+                if (reclaimed != 1)
+                    throw new TicketCancellationValidationException("İptal başka bir işlem tarafından başlatıldı. Listeyi yenileyin.");
+                record = previous;
+                record.Status = TicketCancellationStatus.Processing;
+                record.FailureCode = null;
+                record.UpdatedAtUtc = now.UtcDateTime;
+                // Preserve the original administrator, reason and requested time for audit.
+            }
+            else
+            {
+                record = new TicketCancellation { TicketId = ticketId, ActorUserId = actorUserId, Reason = command.Reason.Trim(),
+                    Amount = ticket.Amount, Status = TicketCancellationStatus.Processing, RequestedAtUtc = now.UtcDateTime, UpdatedAtUtc = now.UtcDateTime };
+                db.TicketCancellations.Add(record);
+            }
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -81,7 +108,9 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
             record.FailureCode = exception is CancellationGatewayException known
                 ? PaymentDiagnostics.SafeCode(known.Code, "CANCELLATION_RESULT_UNKNOWN") : "CANCELLATION_RESULT_UNKNOWN";
             PaymentDiagnostics.Add(db, ticketId, TicketErrorStage.Cancellation, record.FailureCode,
-                "İptal/iade sonucu kesinleşmedi. Yeni iptal veya iade başlatmayın; sipariş koduyla banka ve EasyTicket kaydını kontrol edin.", clock.GetUtcNow());
+                record.FailureCode is "PROVIDER_CANCELLATION_CHECK_FAILED" or "PROVIDER_CANCELLATION_UNAVAILABLE"
+                    ? "EasyTicket ön kontrolü tamamlanamadı. Bilet iptali ve banka iadesi gönderilmedi; panelden ön kontrol yeniden denenebilir."
+                    : "İptal/iade sonucu kesinleşmedi. Yeni iptal veya iade başlatmayın; sipariş koduyla banka ve EasyTicket kaydını kontrol edin.", clock.GetUtcNow());
             await SaveStageAsync(record, TicketCancellationStatus.ReviewRequired);
         }
         return Map(record);
@@ -100,6 +129,8 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
         var status = record.DisplayStatus(clock.GetUtcNow().UtcDateTime);
         return new(record.TicketId, status.ToString(), record.Amount, record.BankOperation,
             status != record.Status ? "CANCELLATION_RESULT_UNKNOWN" : record.FailureCode,
-            record.RequestedAtUtc, record.CompletedAtUtc, record.ProviderCancelledAtUtc.HasValue);
+            record.RequestedAtUtc, record.CompletedAtUtc, record.ProviderCancelledAtUtc.HasValue,
+            record.CanRetryPrecheck() && record.Ticket is { Status: TicketStatus.Confirmed, PaymentStatus: TicketPaymentStatus.Paid,
+                TicketingStatus: TicketingStatus.Issued, PaymentProvider: "Ziraat", Currency: "TRY" } ticket && ticket.Amount == record.Amount);
     }
 }

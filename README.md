@@ -210,6 +210,15 @@ Tekil `TicketCancellations` kaydı, işlemi yapan admini, nedeni ve aşamaları 
 tutar. Çift tıklama/tekrar istek mevcut kaydı döndürür; banka veya EasyTicket işlemi
 tekrarlanmaz. Timeout, process çökmesi veya kısmi başarı `ReviewRequired` gösterir;
 manuel banka/EasyTicket kontrolü gerekir, otomatik iade tekrarı yapılmaz.
+Salt okunur EasyTicket ön sorgusunda 408/429/500/502/503/504 veya bağlantı hatası
+en fazla üç kez, kısa beklemeler ve ayrı beş saniye süre sınırıyla denenir. Bilet
+iptali POST'u ve banka `Void`/`Credit` hiçbir zaman otomatik tekrarlanmaz.
+Yalnızca `PROVIDER_CANCELLATION_CHECK_FAILED`/`PROVIDER_CANCELLATION_UNAVAILABLE`
+ile ön sorguda durmuş ve hiçbir iptal/iade tamamlanma işareti taşımayan kalıcı
+kayıt, admin yeniden onaylarsa atomik olarak tekrar sahiplenilebilir. Banka ve
+voucher tekrar doğrulanır; aynı anda gelen ikinci istek mevcut işlemi döndürür.
+`canRetryCancellation` ve `canRetry` sadece bu güvenli durumu belirtir. Belirsiz
+POST, banka iadesi, process çökmesi ve tamamlanmış işlemler tekrar açılmaz.
 `GET /api/v1/admin/tickets/{id}/cancellation` mevcut kaydı salt okunur gösterir.
 Testler taklit sağlayıcılarla çalışır; gerçek rezervasyon iptal ederek test yapılmaz.
 

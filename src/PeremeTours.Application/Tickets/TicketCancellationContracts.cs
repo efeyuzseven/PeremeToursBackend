@@ -2,7 +2,7 @@ namespace PeremeTours.Application.Tickets;
 
 public sealed record CancelTicketCommand(string TicketCode, decimal ExpectedAmount, string Reason);
 public sealed record TicketCancellationSummary(Guid TicketId, string Status, decimal Amount, string? BankOperation,
-    string? FailureCode, DateTime RequestedAtUtc, DateTime? CompletedAtUtc, bool ProviderCancelled);
+    string? FailureCode, DateTime RequestedAtUtc, DateTime? CompletedAtUtc, bool ProviderCancelled, bool CanRetry = false);
 
 public interface ITicketCancellationService
 {

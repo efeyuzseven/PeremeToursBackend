@@ -158,6 +158,10 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
                 ? "CANCELLATION_RESULT_UNKNOWN" : ticket.Cancellation?.FailureCode,
             ticket.Cancellation is null && ticket.Status == TicketStatus.Confirmed && ticket.PaymentStatus == TicketPaymentStatus.Paid
                 && ticket.TicketingStatus == TicketingStatus.Issued && ticket.PaymentProvider == "Ziraat"
+                && Guid.TryParse(ticket.ExternalVoucherGuid, out _),
+            ticket.Cancellation?.CanRetryPrecheck() == true && ticket.Status == TicketStatus.Confirmed
+                && ticket.PaymentStatus == TicketPaymentStatus.Paid && ticket.TicketingStatus == TicketingStatus.Issued
+                && ticket.PaymentProvider == "Ziraat" && ticket.Currency == "TRY" && ticket.Amount == ticket.Cancellation.Amount
                 && Guid.TryParse(ticket.ExternalVoucherGuid, out _)
         );
 
