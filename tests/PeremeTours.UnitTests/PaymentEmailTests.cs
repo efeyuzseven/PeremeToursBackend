@@ -63,6 +63,22 @@ public sealed class PaymentEmailTests : IDisposable
     }
 
     [Fact]
+    public void IssuedTicketMailLinksOnlyToTheRealEasyTicketVoucher()
+    {
+        var ticket = Ticket();
+        ticket.ExternalVoucherGuid = "11111111-1111-4111-8111-111111111111";
+        var content = PaymentEmailTemplate.Render(ticket, new MailOptions());
+        var link = "https://easyticket.denturonline.com/bilet.aspx?guid=11111111-1111-4111-8111-111111111111";
+        Assert.Contains(link, content.Html, StringComparison.Ordinal);
+        Assert.Contains(link, content.Text, StringComparison.Ordinal);
+        ticket.ExternalVoucherGuid = "javascript:alert('x')";
+        Assert.DoesNotContain("bilet.aspx", PaymentEmailTemplate.Render(ticket, new MailOptions()).Html, StringComparison.Ordinal);
+        ticket.ExternalVoucherGuid = "11111111-1111-4111-8111-111111111111";
+        ticket.TicketingStatus = TicketingStatus.ReviewRequired;
+        Assert.DoesNotContain("bilet.aspx", PaymentEmailTemplate.Render(ticket, new MailOptions()).Html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SuccessfulSendIsPersistedAndCannotBeSentAgain()
     {
         await QueueAsync();

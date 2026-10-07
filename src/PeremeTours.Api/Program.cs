@@ -184,12 +184,14 @@ if (args.Contains("--reconcile-cancelled-payment", StringComparer.OrdinalIgnoreC
     return;
 }
 
-if (args.Contains("--check-mail", StringComparer.OrdinalIgnoreCase))
+if (args.Contains("--check-mail", StringComparer.OrdinalIgnoreCase)
+    || args.Contains("--check-mail-auth", StringComparer.OrdinalIgnoreCase))
 {
     var result = await MailConnectionDiagnostics.CheckAsync(
-        app.Configuration.GetSection(MailOptions.SectionName).Get<MailOptions>() ?? new MailOptions(), CancellationToken.None);
+        app.Configuration.GetSection(MailOptions.SectionName).Get<MailOptions>() ?? new MailOptions(), CancellationToken.None,
+        authenticate: args.Contains("--check-mail-auth", StringComparer.OrdinalIgnoreCase));
     Console.WriteLine(result);
-    Environment.ExitCode = result == "SMTP_TLS_OK" ? 0 : 1;
+    Environment.ExitCode = result is "SMTP_TLS_OK" or "SMTP_PLAINTEXT_OK" or "SMTP_TLS_AUTH_OK" or "SMTP_PLAINTEXT_AUTH_OK" ? 0 : 1;
     return;
 }
 

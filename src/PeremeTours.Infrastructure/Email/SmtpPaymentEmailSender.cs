@@ -24,11 +24,12 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
 {
     private readonly MailOptions _options = options.Value;
 
-    // Read-only TLS probe: no authentication and no email is sent.
-    public async Task CheckConnectionAsync(CancellationToken cancellationToken)
+    // No email is sent. Authentication is optional and never writes a message.
+    public async Task CheckConnectionAsync(CancellationToken cancellationToken, bool authenticate = false)
     {
         using var smtp = new SmtpClient { Timeout = 40_000 };
         await ConnectAsync(smtp, cancellationToken);
+        if (authenticate) await AuthenticateAsync(smtp, cancellationToken);
         await smtp.DisconnectAsync(true, cancellationToken);
     }
 
@@ -51,11 +52,7 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
         message.To.Add(recipient);
         using var smtp = new SmtpClient { Timeout = 40_000 };
         await ConnectAsync(smtp, cancellationToken);
-        try { await smtp.AuthenticateAsync(_options.Username, _options.Password, cancellationToken); }
-        catch (AuthenticationException)
-        { throw new EmailDeliveryException("SMTP_AUTH_FAILED", "Mail sunucusu kullanıcı doğrulamasını reddetti. SMTP hesabı kontrol edilmeli."); }
-        catch (Exception exception) when (exception is SmtpCommandException or IOException or OperationCanceledException or SmtpProtocolException)
-        { throw new EmailDeliveryException("SMTP_CONNECT_FAILED", "Mail sunucusuyla bağlantı tamamlanamadı; tekrar denenecek.", canRetry: true); }
+        await AuthenticateAsync(smtp, cancellationToken);
         try { await smtp.SendAsync(message, cancellationToken); }
         catch (SmtpCommandException exception)
         {
@@ -70,15 +67,37 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
         catch (Exception exception) when (exception is IOException or OperationCanceledException or SmtpProtocolException or SmtpCommandException) { }
     }
 
+    internal static SecureSocketOptions ResolveSecurity(MailOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Server) || options.Port is < 1 or > 65535
+            || !Enum.IsDefined(options.SecurityMode) || (options.SecurityMode == MailSecurityMode.None && options.Port == 465))
+            throw new EmailDeliveryException("SMTP_CONFIG_MISSING", "Mail sunucusu, portu veya bağlantı güvenliği ayarı geçersiz.");
+        return options.SecurityMode switch
+        {
+            MailSecurityMode.None => SecureSocketOptions.None,
+            MailSecurityMode.SslOnConnect => SecureSocketOptions.SslOnConnect,
+            _ => SecureSocketOptions.StartTls,
+        };
+    }
+
+    private async Task AuthenticateAsync(SmtpClient smtp, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Username) || string.IsNullOrWhiteSpace(_options.Password))
+            throw new EmailDeliveryException("SMTP_CONFIG_MISSING", "Mail sunucusu kullanıcı ayarları eksik.");
+        try { await smtp.AuthenticateAsync(_options.Username, _options.Password, cancellationToken); }
+        catch (AuthenticationException)
+        { throw new EmailDeliveryException("SMTP_AUTH_FAILED", "Mail sunucusu kullanıcı doğrulamasını reddetti. SMTP hesabı kontrol edilmeli."); }
+        catch (Exception exception) when (exception is SmtpCommandException or IOException or OperationCanceledException or SmtpProtocolException)
+        { throw new EmailDeliveryException("SMTP_CONNECT_FAILED", "Mail sunucusuyla bağlantı tamamlanamadı; tekrar denenecek.", canRetry: true); }
+    }
+
     private async Task ConnectAsync(SmtpClient smtp, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.Server) || _options.Port is not (465 or 587))
-            throw new EmailDeliveryException("SMTP_CONFIG_MISSING", "Mail bağlantısı için 465/TLS veya 587/STARTTLS yapılandırılmalı.");
+        var security = ResolveSecurity(_options);
         try
         {
-            // Certificate and hostname validation remain enabled. Never fall back to plaintext authentication.
-            await smtp.ConnectAsync(_options.Server, _options.Port,
-                _options.Port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, cancellationToken);
+            // Explicit None is provider-specific. TLS modes retain certificate validation and never fall back.
+            await smtp.ConnectAsync(_options.Server, _options.Port, security, cancellationToken);
         }
         catch (Exception exception) when (exception is SslHandshakeException or System.Security.Authentication.AuthenticationException or NotSupportedException)
         { throw new EmailDeliveryException("SMTP_TLS_FAILED", "Mail sunucusunun güvenli TLS bağlantısı doğrulanamadı. Sunucu sertifikası kontrol edilmeli; güvenlik doğrulaması kapatılmaz."); }

@@ -201,16 +201,24 @@ PNR sadece `Issued` durumda gösterilir; kimlik, pasaport, doğum tarihi, kart v
 `MailSettings` ayarları kullanılır. AWS, Dentur Avrasya ile aynı gönderici hesabını
 ve mevcut `/dentur/avrasya/SMTP_PASSWORD` SSM SecureString kaydını referans alır;
 şifre kaynak koda veya task definition içindeki düz metin environment listesine yazılmaz.
-587/STARTTLS veya 465/TLS zorunludur; sertifika/hostname doğrulaması kapatılamaz.
-Mail ayarları doğruysa ve güvenli bağlantı doğrulandıysa gönderimi etkinleştirin:
+`MailSettings:SecurityMode` varsayılan olarak `StartTls` kullanır; `SslOnConnect`
+TLS modudur. Bu modlarda sertifika/hostname doğrulaması kapatılamaz ve başarısız
+bağlantı şifresiz moda düşmez. Sağlayıcının talebi ve işletme sahibinin açık seçimi
+ile `None` kullanılabilir: SMTP şifresi ve mail içeriği ağ üzerinde şifrelenmez.
+2026-10-07 tarihinde Dentur sağlayıcısının talebiyle test ortamında `None` seçildi.
+Bu ayar sadece SMTP'yi etkiler, banka/API HTTPS bağlantılarını değiştirmez.
+Mail ayarları ve kullanıcı doğrulaması kontrol edildikten sonra gönderimi etkinleştirin:
 
 ```powershell
 dotnet run --project src/PeremeTours.Api -- --check-mail
-.\scripts\deploy-infrastructure.ps1 -MailSendingEnabled true
+dotnet run --project src/PeremeTours.Api -- --check-mail-auth
+.\scripts\deploy-infrastructure.ps1 -MailSendingEnabled true -MailSecurityMode None
 ```
 
-`--check-mail` sadece TLS bağlantısını kontrol eder; kullanıcı doğrulaması veya
-mail gönderimi yapmaz. AWS ortamında aynı komut mevcut ECS image'ı ile tek seferlik
+`--check-mail` sadece seçili moddaki bağlantıyı kontrol eder; kullanıcı doğrulaması
+veya mail gönderimi yapmaz. `--check-mail-auth` ayrıca kullanıcı doğrulaması yapar,
+ancak mail göndermez. Başarı kodu TLS/şifresiz bağlantıyı açıkça ayırt eder.
+AWS ortamında aynı komut mevcut ECS image'ı ile tek seferlik
 task olarak çalıştırılabilir. Gönderim kapalıyken yeni başarılı ödemeler kuyrukta korunur.
 Altyapı script'i açıkça parametre verilmedikçe mevcut POS/mail aktivasyon durumunu korur.
 

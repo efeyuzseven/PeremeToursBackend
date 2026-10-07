@@ -41,8 +41,16 @@ internal static class PaymentEmailTemplate
             text.AppendLine(CultureInfo.InvariantCulture, $"{row.Label}: {row.Value}");
         }
         var pnrHtml = new StringBuilder();
+        var voucherHtml = string.Empty;
         if (issued)
         {
+            if (Guid.TryParse(ticket.ExternalVoucherGuid, out var voucherGuid))
+            {
+                var voucherUrl = $"https://easyticket.denturonline.com/bilet.aspx?guid={voucherGuid:D}";
+                var voucherLabel = en ? "View tickets & QR codes" : "Biletleri ve QR kodları görüntüle";
+                voucherHtml = $"<p style='margin:22px 0'><a href='{E(voucherUrl)}' style='display:inline-block;padding:15px 23px;background:#1f478c;border-radius:24px;color:#fff;text-decoration:none;font-size:14px;font-weight:bold'>{E(voucherLabel)} →</a></p>";
+                text.AppendLine(CultureInfo.InvariantCulture, $"{voucherLabel}: {voucherUrl}");
+            }
             foreach (var passenger in ticket.Passengers.OrderBy(item => item.Sequence).Where(item => !string.IsNullOrWhiteSpace(item.Pnr)))
             {
                 var label = en ? $"Guest {passenger.Sequence + 1} · PNR" : $"{passenger.Sequence + 1}. misafir · PNR";
@@ -70,6 +78,7 @@ internal static class PaymentEmailTemplate
             <p style="font-size:14px;line-height:1.8;color:#1f478c">{{(en ? "Hello" : "Merhaba")}} <strong>{{E(ticket.CustomerName)}}</strong>,<br>{{E(state)}}</p>
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:20px">{{htmlRows}}</table>
             {{pnrHtml}}
+            {{voucherHtml}}
             <table role="presentation" width="100%" style="margin-top:24px;background:#1f478c;border-radius:12px"><tr><td style="padding:20px;color:#fff;font-size:13px">{{(en ? "Amount paid" : "Ödenen tutar")}}</td><td align="right" style="padding:20px;color:#fff;font-size:23px;font-weight:bold">{{E(amount)}}</td></tr></table>
             <p style="margin:28px 0 14px;color:#1f478c;font-size:13px;line-height:1.6">{{E(support)}}</p>
             <a href="{{E(contactUrl)}}" style="display:inline-block;padding:14px 22px;background:#6a9dd2;border-radius:24px;color:#fff;text-decoration:none;font-size:13px;font-weight:bold">{{(en ? "Contact our team →" : "Ekibimize ulaşın →")}}</a></td></tr>

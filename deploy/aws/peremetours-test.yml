@@ -51,6 +51,13 @@ Parameters:
     Type: String
     Default: arn:aws:ssm:eu-central-1:890571110014:parameter/dentur/avrasya/SMTP_PASSWORD
     AllowedPattern: "arn:aws:ssm:[a-z0-9-]+:[0-9]{12}:parameter/.+"
+  MailSecurityMode:
+    Type: String
+    Default: StartTls
+    AllowedValues:
+      - StartTls
+      - SslOnConnect
+      - None
   BackendImageTag:
     Type: String
     Default: bootstrap
@@ -481,6 +488,8 @@ Resources:
               Value: mail.denturonline.com
             - Name: MailSettings__Port
               Value: "587"
+            - Name: MailSettings__SecurityMode
+              Value: !Ref MailSecurityMode
             - Name: MailSettings__Username
               Value: musterihizmetleri@denturonline.com
             - Name: MailSettings__SenderEmail

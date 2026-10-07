@@ -5,7 +5,9 @@ param(
   [ValidateSet("true", "false")]
   [string]$ZiraatPaymentEnabled = "false",
   [ValidateSet("true", "false")]
-  [string]$MailSendingEnabled = "false"
+  [string]$MailSendingEnabled = "false",
+  [ValidateSet("StartTls", "SslOnConnect", "None")]
+  [string]$MailSecurityMode = "StartTls"
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,7 +28,7 @@ $stack = aws cloudformation describe-stacks `
   --no-cli-pager 2>$null | ConvertFrom-Json
 if ($LASTEXITCODE -eq 0 -and $stack.Stacks.Count -gt 0) {
   # Preserve existing activation flags unless the operator explicitly supplies a new value.
-  foreach ($flagName in @("ZiraatPaymentEnabled", "MailSendingEnabled")) {
+  foreach ($flagName in @("ZiraatPaymentEnabled", "MailSendingEnabled", "MailSecurityMode")) {
     if (-not $PSBoundParameters.ContainsKey($flagName)) {
       $existingFlag = $stack.Stacks[0].Parameters | Where-Object ParameterKey -eq $flagName
       if ($null -ne $existingFlag) { Set-Variable -Name $flagName -Value $existingFlag.ParameterValue }
@@ -81,7 +83,7 @@ aws cloudformation deploy `
   --stack-name $StackName `
   --region $Region `
   --capabilities CAPABILITY_NAMED_IAM `
-  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" "ZiraatPaymentEnabled=$ZiraatPaymentEnabled" "MailSendingEnabled=$MailSendingEnabled" "BackendImageTag=$backendImageTag" "BackendDesiredCount=$backendDesiredCount" `
+  --parameter-overrides "GitHubRepositorySubject=$GitHubRepositorySubject" "ZiraatPaymentEnabled=$ZiraatPaymentEnabled" "MailSendingEnabled=$MailSendingEnabled" "MailSecurityMode=$MailSecurityMode" "BackendImageTag=$backendImageTag" "BackendDesiredCount=$backendDesiredCount" `
   --tags Project=PeremeTours Environment=Test `
   --no-fail-on-empty-changeset `
   --no-cli-pager
