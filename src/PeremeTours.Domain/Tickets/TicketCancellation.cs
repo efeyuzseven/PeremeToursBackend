@@ -1,6 +1,7 @@
 namespace PeremeTours.Domain.Tickets;
 
 public enum TicketCancellationStatus { Processing, ProviderCancelled, BankReversalStarted, Completed, ReviewRequired }
+public enum ProviderCancellationStatus { NotRequested, Queued, Processing, Cancelled, ReviewRequired }
 
 public sealed class TicketCancellation
 {
@@ -18,12 +19,19 @@ public sealed class TicketCancellation
     public DateTime UpdatedAtUtc { get; set; }
     public DateTime? ProviderCancelledAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
+    public DateTime? BankReversalStartedAtUtc { get; set; }
+    public ProviderCancellationStatus ProviderStatus { get; set; }
+    public string? ProviderFailureCode { get; set; }
+    public int ProviderAttemptCount { get; set; }
+    public DateTime? ProviderNextAttemptAtUtc { get; set; }
+    public DateTime? ProviderLockedUntilUtc { get; set; }
 
-    // These codes are emitted only BEFORE the provider mutation. Never reopen an
-    // ambiguous cancellation/refund, a completed claim, or a crashed in-flight claim.
-    public bool CanRetryPrecheck() => Status == TicketCancellationStatus.ReviewRequired
-        && (FailureCode is "PROVIDER_CANCELLATION_CHECK_FAILED" or "PROVIDER_CANCELLATION_UNAVAILABLE")
-        && ProviderCancelledAtUtc is null && BankReversalTransactionId is null && CompletedAtUtc is null;
+    // Legacy provider-first failures happened before any bank reversal. They may
+    // resume ONLY the bank leg. An unknown old provider POST must never be replayed.
+    public bool CanResumeBankCancellation() => Status == TicketCancellationStatus.ReviewRequired
+        && (FailureCode is "PROVIDER_CANCELLATION_CHECK_FAILED" or "PROVIDER_CANCELLATION_UNAVAILABLE"
+            or "PROVIDER_CANCELLATION_UNKNOWN" or "PROVIDER_CANCELLATION_REJECTED")
+        && BankReversalStartedAtUtc is null && BankReversalTransactionId is null && CompletedAtUtc is null;
 
     public TicketCancellationStatus DisplayStatus(DateTime now) =>
         Status is not (TicketCancellationStatus.Completed or TicketCancellationStatus.ReviewRequired)

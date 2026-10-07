@@ -18,6 +18,8 @@ internal sealed class TicketCancellationConfiguration : IEntityTypeConfiguration
         builder.Property(item => item.BankTransactionId).HasMaxLength(128);
         builder.Property(item => item.BankReversalTransactionId).HasMaxLength(128);
         builder.Property(item => item.FailureCode).HasMaxLength(64);
+        builder.Property(item => item.ProviderFailureCode).HasMaxLength(64);
         builder.HasIndex(item => item.Status);
+        builder.HasIndex(item => new { item.ProviderStatus, item.ProviderNextAttemptAtUtc });
     }
 }

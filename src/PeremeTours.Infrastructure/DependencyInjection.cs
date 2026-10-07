@@ -72,6 +72,8 @@ public static class DependencyInjection
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITicketErrorService, TicketErrorService>();
         services.AddScoped<ITicketCancellationService, TicketCancellationService>();
+        services.AddScoped<ProviderCancellationProcessor>();
+        services.AddHostedService<ProviderCancellationWorker>();
         services.AddScoped<ITourPaymentService, TourPaymentService>();
         services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
         services.AddScoped<IPaymentEmailSender, SmtpPaymentEmailSender>();

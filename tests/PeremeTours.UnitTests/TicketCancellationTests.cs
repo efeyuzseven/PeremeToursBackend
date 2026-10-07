@@ -34,18 +34,24 @@ public sealed class TicketCancellationTests : IDisposable
     [Theory]
     [InlineData("Void")]
     [InlineData("Credit")]
-    public async Task ConfirmedProviderAndBankResultsAreRequiredForFullCancellation(string operation)
+    public async Task BankApprovalCompletesRefundBeforeBackgroundProviderCancellation(string operation)
     {
         _bank.Operation = operation;
         var result = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         Assert.Equal("Completed", result!.Status);
         Assert.Equal(operation, result.BankOperation);
-        Assert.Equal("check,provider,reverse", string.Join(',', _events));
+        Assert.Equal("check,reverse", string.Join(',', _events));
+        Assert.False(result.ProviderCancelled); Assert.Equal(0, _provider.Calls);
         var ticket = await _db.TourTickets.SingleAsync();
         Assert.Equal(TicketStatus.Cancelled, ticket.Status);
         Assert.Equal(TicketPaymentStatus.Refunded, ticket.PaymentStatus);
         Assert.Equal(350, (await _db.TicketCancellations.SingleAsync()).Amount);
         Assert.Equal(_actor, (await _db.TicketCancellations.SingleAsync()).ActorUserId);
+        Assert.Equal(ProviderCancellationStatus.Queued, (await _db.TicketCancellations.SingleAsync()).ProviderStatus);
+        _db.ChangeTracker.Clear();
+        Assert.True(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal("check,reverse,provider", string.Join(',', _events));
+        Assert.True((await Service(_db).GetAsync(_ticket.Id, CancellationToken.None))!.ProviderCancelled);
     }
 
     [Fact]
@@ -54,7 +60,7 @@ public sealed class TicketCancellationTests : IDisposable
         await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         using var second = Context();
         Assert.Equal("Completed", (await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None))!.Status);
-        Assert.Equal(1, _bank.Reversals); Assert.Equal(1, _provider.Calls); Assert.Equal(1, _bank.Checks);
+        Assert.Equal(1, _bank.Reversals); Assert.Equal(0, _provider.Calls); Assert.Equal(1, _bank.Checks);
     }
 
     [Fact]
@@ -65,17 +71,16 @@ public sealed class TicketCancellationTests : IDisposable
         using var second = Context();
         Assert.Equal("Processing", (await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None))!.Status);
         _bank.Gate.SetResult(); await first;
-        Assert.Equal(1, _bank.Checks); Assert.Equal(1, _bank.Reversals); Assert.Equal(1, _provider.Calls);
+        Assert.Equal(1, _bank.Checks); Assert.Equal(1, _bank.Reversals); Assert.Equal(0, _provider.Calls);
     }
 
     [Theory]
     [InlineData("check", "BANK_CANCELLATION_CHECK_FAILED", 0, 0, TicketStatus.Confirmed)]
-    [InlineData("provider", "PROVIDER_CANCELLATION_UNKNOWN", 1, 0, TicketStatus.Confirmed)]
-    [InlineData("reverse", "BANK_REVERSAL_UNKNOWN", 1, 1, TicketStatus.Cancelled)]
+    [InlineData("reverse", "BANK_REVERSAL_UNKNOWN", 0, 1, TicketStatus.Confirmed)]
     public async Task AmbiguityIsLoggedWithoutPretendingMoneyWasRefundedOrReplaying(string stage, string code,
         int providerCalls, int reverseCalls, TicketStatus expectedStatus)
     {
-        _bank.FailCheck = stage == "check"; _provider.Fail = stage == "provider"; _bank.FailReverse = stage == "reverse";
+        _bank.FailCheck = stage == "check"; _bank.FailReverse = stage == "reverse";
         var result = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         Assert.Equal("ReviewRequired", result!.Status); Assert.Equal(code, result.FailureCode);
         using var second = Context();
@@ -91,7 +96,7 @@ public sealed class TicketCancellationTests : IDisposable
     {
         _bank.AlreadyReversed = true;
         Assert.Equal("Completed", (await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None))!.Status);
-        Assert.Equal(0, _bank.Reversals); Assert.Equal(1, _provider.Calls);
+        Assert.Equal(0, _bank.Reversals); Assert.Equal(0, _provider.Calls);
     }
 
     [Theory]
@@ -142,38 +147,35 @@ public sealed class TicketCancellationTests : IDisposable
     [InlineData("PROVIDER_CANCELLATION_UNAVAILABLE")]
     public async Task SafePrecheckFailureCanBeReclaimedAndRefundedExactlyOnce(string code)
     {
-        _provider.CheckFailure = code;
-        var first = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        await SeedLegacyFailureAsync(code);
+        var first = await Service(_db).GetAsync(_ticket.Id, CancellationToken.None);
         Assert.True(first!.CanRetry); Assert.Equal(0, _bank.Reversals);
         using var second = Context();
         Assert.True((await new TicketService(second).ListAsync(CancellationToken.None)).Single().CanRetryCancellation);
-        _provider.CheckFailure = null;
         var result = await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         Assert.Equal("Completed", result!.Status); Assert.False(result.CanRetry);
-        Assert.Equal(1, _bank.Reversals); Assert.Equal(2, _bank.Checks);
+        Assert.Equal(1, _bank.Reversals); Assert.Equal(1, _bank.Checks);
         Assert.Single(await second.TicketCancellations.ToListAsync());
         using var third = Context();
         await Service(third).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
-        Assert.Equal(1, _bank.Reversals); Assert.Equal(2, _provider.Calls);
+        Assert.Equal(1, _bank.Reversals); Assert.Equal(0, _provider.Calls);
     }
 
     [Fact]
     public async Task ConcurrentSafeRetryClaimsOnlyOneExternalOperation()
     {
-        _provider.CheckFailure = "PROVIDER_CANCELLATION_CHECK_FAILED";
-        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
-        _provider.CheckFailure = null;
+        await SeedLegacyFailureAsync("PROVIDER_CANCELLATION_CHECK_FAILED");
         _bank.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var second = Context(); using var third = Context();
         var retry = Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         var duplicate = await Service(third).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         Assert.Equal("Processing", duplicate!.Status); Assert.False(duplicate.CanRetry);
         _bank.Gate.SetResult(); await retry;
-        Assert.Equal(2, _bank.Checks); Assert.Equal(2, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+        Assert.Equal(1, _bank.Checks); Assert.Equal(0, _provider.Calls); Assert.Equal(1, _bank.Reversals);
     }
 
     [Theory]
-    [InlineData("provider-cancelled")]
+    [InlineData("bank-started")]
     [InlineData("bank-reference")]
     [InlineData("completed")]
     [InlineData("unknown")]
@@ -183,7 +185,7 @@ public sealed class TicketCancellationTests : IDisposable
         var record = new TicketCancellation { TicketId = _ticket.Id, ActorUserId = _actor, Reason = "Test", Amount = 350,
             Status = TicketCancellationStatus.ReviewRequired, FailureCode = "PROVIDER_CANCELLATION_CHECK_FAILED",
             RequestedAtUtc = DateTime.UtcNow.AddMinutes(-10), UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-10) };
-        if (fault == "provider-cancelled") record.ProviderCancelledAtUtc = DateTime.UtcNow;
+        if (fault == "bank-started") record.BankReversalStartedAtUtc = DateTime.UtcNow;
         if (fault == "bank-reference") record.BankReversalTransactionId = "MOCK-REFUND";
         if (fault == "completed") record.CompletedAtUtc = DateTime.UtcNow;
         if (fault == "unknown") record.FailureCode = "BANK_REVERSAL_UNKNOWN";
@@ -206,7 +208,130 @@ public sealed class TicketCancellationTests : IDisposable
                         property.SetValueConverter(new DateTimeOffsetToBinaryConverter());
         }
     }
-    private TicketCancellationService Service(PeremeToursDbContext db) => new(db, _bank, _provider, TimeProvider.System);
+    private TicketCancellationService Service(PeremeToursDbContext db) => new(db, _bank, TimeProvider.System);
+    private ProviderCancellationProcessor Processor(PeremeToursDbContext db) => new(db, _provider, TimeProvider.System);
+    private async Task SeedLegacyFailureAsync(string code)
+    {
+        _db.TicketCancellations.Add(new TicketCancellation { TicketId = _ticket.Id, ActorUserId = _actor, Reason = "Original admin confirmation", Amount = 350,
+            Status = TicketCancellationStatus.ReviewRequired, FailureCode = code, BankOperation = "Void", BankTransactionId = "MOCK-TX",
+            RequestedAtUtc = DateTime.UtcNow.AddMinutes(-10), UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-10) });
+        await _db.SaveChangesAsync(); _db.ChangeTracker.Clear();
+    }
+
+    [Theory]
+    [InlineData("PROVIDER_CANCELLATION_UNKNOWN")]
+    [InlineData("PROVIDER_CANCELLATION_REJECTED")]
+    public async Task LegacyUnknownProviderPostCanRefundWithoutReplayingProvider(string code)
+    {
+        await SeedLegacyFailureAsync(code);
+        Assert.True((await Service(_db).GetAsync(_ticket.Id, CancellationToken.None))!.CanRetry);
+        Assert.True((await new TicketService(_db).ListAsync(CancellationToken.None)).Single().CanRetryCancellation);
+        var result = await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal("Completed", result!.Status); Assert.False(result.CanRetry); Assert.Null(result.FailureCode);
+        var record = await _db.TicketCancellations.SingleAsync();
+        Assert.Equal(ProviderCancellationStatus.ReviewRequired, record.ProviderStatus); Assert.Equal(code, record.ProviderFailureCode);
+        Assert.Equal(TicketPaymentStatus.Refunded, (await _db.TourTickets.SingleAsync()).PaymentStatus);
+        _db.ChangeTracker.Clear(); Assert.False(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(0, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Theory]
+    [InlineData("PROVIDER_CANCELLATION_UNKNOWN")]
+    [InlineData("PROVIDER_CANCELLATION_REJECTED")]
+    [InlineData("PROVIDER_CANCELLATION_CHECK_FAILED")]
+    public async Task ProviderFailureIsInternalAndDoesNotUndoConfirmedBankRefund(string code)
+    {
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        _provider.CheckFailure = code; _db.ChangeTracker.Clear();
+        Assert.True(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        var result = await Service(_db).GetAsync(_ticket.Id, CancellationToken.None);
+        Assert.Equal("Completed", result!.Status); Assert.Null(result.FailureCode); Assert.False(result.CanRetry);
+        var record = await _db.TicketCancellations.SingleAsync();
+        Assert.Equal(code, record.ProviderFailureCode); Assert.Equal(ProviderCancellationStatus.ReviewRequired, record.ProviderStatus);
+        Assert.Equal(TicketPaymentStatus.Refunded, (await _db.TourTickets.SingleAsync()).PaymentStatus);
+        Assert.Equal(TicketStatus.Cancelled, (await _db.TourTickets.SingleAsync()).Status);
+        Assert.Equal(code, (await _db.TicketErrorRecords.SingleAsync()).Code);
+        using var second = Context();
+        Assert.False(await Processor(second).ProcessNextAsync(CancellationToken.None));
+        await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal(1, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Fact]
+    public async Task ProviderPrecheckUnavailableCanOnlyRetryThreeReadOnlyAttempts()
+    {
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        _provider.CheckFailure = "PROVIDER_CANCELLATION_UNAVAILABLE";
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            _db.ChangeTracker.Clear();
+            var record = await _db.TicketCancellations.SingleAsync(); record.ProviderNextAttemptAtUtc = DateTime.UtcNow.AddSeconds(-1);
+            await _db.SaveChangesAsync(); _db.ChangeTracker.Clear();
+            Assert.True(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        }
+        Assert.Equal(ProviderCancellationStatus.ReviewRequired, (await _db.TicketCancellations.SingleAsync()).ProviderStatus);
+        Assert.False(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(3, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+        Assert.Equal("Completed", (await Service(_db).GetAsync(_ticket.Id, CancellationToken.None))!.Status);
+    }
+
+    [Fact]
+    public async Task TwoProviderWorkersNeverReplayTheSameCancellation()
+    {
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        _db.ChangeTracker.Clear(); _provider.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = Processor(_db).ProcessNextAsync(CancellationToken.None);
+        using var second = Context(); Assert.False(await Processor(second).ProcessNextAsync(CancellationToken.None));
+        _provider.Gate.SetResult(); await first;
+        Assert.Equal(1, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Fact]
+    public async Task CrashedProviderWorkerIsNeverReplayedAndBankResultStaysCompleted()
+    {
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        var record = await _db.TicketCancellations.SingleAsync(); record.ProviderStatus = ProviderCancellationStatus.Processing;
+        record.ProviderLockedUntilUtc = DateTime.UtcNow.AddMinutes(-1);
+        await _db.SaveChangesAsync(); _db.ChangeTracker.Clear();
+        Assert.True(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(ProviderCancellationStatus.ReviewRequired, (await _db.TicketCancellations.SingleAsync()).ProviderStatus);
+        Assert.Equal("Completed", (await Service(_db).GetAsync(_ticket.Id, CancellationToken.None))!.Status);
+        Assert.Equal(0, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Fact]
+    public async Task ProviderQueueCannotRunBeforeTheBankRefundIsConfirmed()
+    {
+        _db.TicketCancellations.Add(new TicketCancellation { TicketId = _ticket.Id, ActorUserId = _actor, Reason = "Invalid queue",
+            Amount = 350, Status = TicketCancellationStatus.Completed, ProviderStatus = ProviderCancellationStatus.Queued,
+            ProviderNextAttemptAtUtc = DateTime.UtcNow.AddMinutes(-1), RequestedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow });
+        await _db.SaveChangesAsync(); _db.ChangeTracker.Clear();
+        Assert.False(await Processor(_db).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(0, _provider.Calls); Assert.Equal(0, _bank.Reversals);
+    }
+
+    [Fact]
+    public async Task ProviderQueueSurvivesTheRequestScopeEnding()
+    {
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        using var restarted = Context();
+        Assert.True(await Processor(restarted).ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(ProviderCancellationStatus.Cancelled, (await restarted.TicketCancellations.SingleAsync()).ProviderStatus);
+        Assert.Equal(1, _provider.Calls); Assert.Equal(1, _bank.Reversals);
+    }
+
+    [Fact]
+    public async Task DurableBankStartMarkerExistsBeforeReversalIsSent()
+    {
+        _bank.BeforeReverse = () => {
+            using var inspect = Context();
+            var record = inspect.TicketCancellations.Single();
+            Assert.NotNull(record.BankReversalStartedAtUtc);
+            Assert.Equal(TicketCancellationStatus.BankReversalStarted, record.Status);
+        };
+        await Service(_db).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
+        Assert.Equal(1, _bank.Reversals);
+    }
     private sealed class FakeBank : IBankCancellationGateway
     {
         public List<string> Events { get; set; } = [];
@@ -217,21 +342,22 @@ public sealed class TicketCancellationTests : IDisposable
         public int Checks { get; private set; }
         public int Reversals { get; private set; }
         public TaskCompletionSource? Gate { get; set; }
+        public Action? BeforeReverse { get; set; }
         public async Task<BankCancellationCheck> CheckAsync(TourTicket ticket, CancellationToken cancellationToken)
         { Checks++; Events.Add("check"); if (Gate is not null) await Gate.Task;
             if (FailCheck) throw new CancellationGatewayException("BANK_CANCELLATION_CHECK_FAILED"); return new("MOCK-TX", Operation, AlreadyReversed); }
         public Task<string> ReverseAsync(TourTicket ticket, BankCancellationCheck check, CancellationToken cancellationToken)
-        { Reversals++; Events.Add("reverse"); if (FailReverse) throw new CancellationGatewayException("BANK_REVERSAL_UNKNOWN"); return Task.FromResult("MOCK-REVERSAL"); }
+        { BeforeReverse?.Invoke(); Reversals++; Events.Add("reverse"); if (FailReverse) throw new CancellationGatewayException("BANK_REVERSAL_UNKNOWN"); return Task.FromResult("MOCK-REVERSAL"); }
     }
     private sealed class FakeProvider : IEasyTicketCancellationGateway
     {
         public List<string> Events { get; set; } = [];
-        public bool Fail { get; set; }
         public string? CheckFailure { get; set; }
+        public TaskCompletionSource? Gate { get; set; }
         public int Calls { get; private set; }
-        public Task CancelAsync(TourTicket ticket, CancellationToken cancellationToken)
-        { Calls++; Events.Add("provider"); if (CheckFailure is not null) throw new CancellationGatewayException(CheckFailure);
-            if (Fail) throw new CancellationGatewayException("PROVIDER_CANCELLATION_UNKNOWN"); return Task.CompletedTask; }
+        public async Task CancelAsync(TourTicket ticket, CancellationToken cancellationToken)
+        { Calls++; Events.Add("provider"); if (Gate is not null) await Gate.Task;
+            if (CheckFailure is not null) throw new CancellationGatewayException(CheckFailure); }
     }
     public void Dispose() { _db.Dispose(); _connection.Dispose(); }
 }
