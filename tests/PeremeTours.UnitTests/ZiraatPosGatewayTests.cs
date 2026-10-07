@@ -45,6 +45,19 @@ public sealed class ZiraatPosGatewayTests
         Assert.Equal(HostReference, (await fixture.FinalizeAsync()).HostReference);
     }
 
+    [Theory]
+    [InlineData("ISO-8859-9")]
+    [InlineData("windows-1254")]
+    public async Task LiveTurkishBankCharsetCanBeReadBeforeValidatingApproval(string charset)
+    {
+        using var fixture = new Fixture(ApprovedResponse().ToString());
+        fixture.Handler.Charset = charset;
+        var result = await fixture.FinalizeAsync();
+        Assert.True(result.IsApproved);
+        Assert.Equal(HostReference, result.HostReference);
+        Assert.Equal(1, fixture.Handler.RequestCount);
+    }
+
     [Fact]
     public async Task NamespacedResponseTrimsValues()
     {
@@ -165,12 +178,15 @@ public sealed class ZiraatPosGatewayTests
     {
         public int RequestCount { get; private set; }
         public XDocument? RequestXml { get; private set; }
+        public string Charset { get; set; } = "utf-8";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestCount++;
             Assert.Equal("bank.example.test", request.RequestUri!.Host);
             RequestXml = XDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
-            return new HttpResponseMessage(status) { Content = new StringContent(responseXml, Encoding.UTF8, "application/xml") };
+            var content = new StringContent(responseXml, Encoding.UTF8, "application/xml");
+            content.Headers.ContentType!.CharSet = Charset;
+            return new HttpResponseMessage(status) { Content = content };
         }
     }
 

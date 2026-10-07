@@ -244,3 +244,8 @@ AWS'de mevcut ECS task definition ve aynı özel ağ ile tek seferlik task olara
 `PaymentStatus=Refunded`, `TicketingStatus=NotRequired` olur. Geçmiş hata kayıtları
 ve müşterinin son durumu okuyabilmesi için ödeme kurtarma anahtarı korunur.
 Komut tekrar çalıştırıldığında ikinci bir değişiklik/finansal işlem yapmaz.
+
+Banka XML/3D yanıtları bildirdikleri karakter kodlamasıyla okunur. Canlı CC5
+endpoint'inin `ISO-8859-9` ve eski `windows-1254` Türkçe kodlamaları için .NET
+`CodePagesEncodingProvider` etkinleştirilir; doğrulanamayan kodlama tahsilat onayı
+olarak kabul edilmez. Ham banka yanıtı veya kart bilgileri loglara yazılmaz.

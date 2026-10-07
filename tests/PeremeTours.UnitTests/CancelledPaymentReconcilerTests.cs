@@ -126,6 +126,16 @@ public sealed class CancelledPaymentReconcilerTests
         Assert.Equal(TicketPaymentStatus.ReviewRequired, fixture.Ticket.PaymentStatus);
     }
 
+    [Fact]
+    public async Task LiveTurkishBankCharsetIsSupportedWithoutASecondFinancialRequest()
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.Charset = "ISO-8859-9";
+        await fixture.ReconcileAsync();
+        Assert.Equal(TicketPaymentStatus.Refunded, fixture.Ticket.PaymentStatus);
+        Assert.Equal(1, fixture.Handler.Calls);
+    }
+
     private static TourTicket NewTicket(string code) => new()
     {
         Id = Guid.NewGuid(), TicketCode = code, TourName = "Mock tour", TourDate = new DateOnly(2099, 1, 1),
@@ -179,6 +189,7 @@ public sealed class CancelledPaymentReconcilerTests
         public XDocument? LastRequest { get; private set; }
         public HttpStatusCode StatusCode { get; set; } = HttpStatusCode.OK;
         public string? RawXml { get; set; }
+        public string Charset { get; set; } = "utf-8";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Calls++;
@@ -186,9 +197,11 @@ public sealed class CancelledPaymentReconcilerTests
             LastRequest = XDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
             Assert.Empty(LastRequest.Descendants("Type"));
             Assert.Empty(LastRequest.Descendants("Number"));
+            var content = new StringContent(RawXml ?? Xml.ToString(), Encoding.UTF8, "application/xml");
+            content.Headers.ContentType!.CharSet = Charset;
             return new HttpResponseMessage(StatusCode)
             {
-                Content = new StringContent(RawXml ?? Xml.ToString(), Encoding.UTF8, "application/xml"),
+                Content = content,
             };
         }
     }

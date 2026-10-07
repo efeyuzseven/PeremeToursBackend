@@ -130,7 +130,7 @@ internal sealed class ZiraatPosGateway(
             throw new PaymentGatewayException("Banka yanıtı beklenen boyutu aşıyor.");
         }
 
-        var html = await response.Content.ReadAsStringAsync(cancellationToken);
+        var html = await ZiraatResponseReader.ReadAsync(response.Content, cancellationToken);
         if (string.IsNullOrWhiteSpace(html) || html.Length > MaxGatewayResponseCharacters)
         {
             throw new PaymentGatewayException("Banka doğrulama ekranı alınamadı.");
@@ -208,7 +208,7 @@ internal sealed class ZiraatPosGateway(
             throw new PaymentGatewayException("Banka ödeme onayı alınamadı.");
         }
 
-        var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
+        var responseXml = await ZiraatResponseReader.ReadAsync(response.Content, cancellationToken);
         if (string.IsNullOrWhiteSpace(responseXml) || responseXml.Length > MaxGatewayResponseCharacters)
             throw InvalidAuthorizationResponse(orderId, "INVALID_RESPONSE_SIZE");
         XDocument document;

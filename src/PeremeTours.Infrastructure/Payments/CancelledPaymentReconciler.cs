@@ -71,7 +71,7 @@ public sealed class CancelledPaymentReconciler(
             HttpCompletionOption.ResponseContentRead, cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new PaymentGatewayException("Banka iptal sorgusu doğrulanamadı.");
-        var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
+        var responseXml = await ZiraatResponseReader.ReadAsync(response.Content, cancellationToken);
         if (string.IsNullOrWhiteSpace(responseXml) || responseXml.Length > 256_000)
             throw new PaymentGatewayException("Banka iptal yanıtı doğrulanamadı.");
         XDocument document;
