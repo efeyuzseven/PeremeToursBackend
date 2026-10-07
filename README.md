@@ -46,6 +46,7 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/payments/tour/status` (`X-Payment-Token` başlığı)
 - `POST /api/v1/payments/ziraat/callback`
 - `GET /api/v1/system/health`
+- `GET /api/v1/system/ready` (veritabanı bağlantısını doğrular; erişilemiyorsa `503`)
 
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
 
@@ -104,6 +105,21 @@ Altyapı ilk kez kurulduktan sonra `main-prod` branch'ine yapılan her push GitH
 - Admin parolası: `.\scripts\get-test-admin-password.ps1`
 
 CloudFormation: `deploy/aws/peremetours-test.yml`
+
+### Dinamik veritabanı şifresi
+
+AWS ortamında `Database:SecretArn` ve `Database:SecretRegion` tanımlanır.
+Backend, ECS task rolüyle yalnızca kendi RDS secret'ını okuyabilir; AWS access key
+veya sabit veritabanı şifresi uygulamaya verilmez. Npgsql her yeni fiziksel
+PostgreSQL bağlantısında Secrets Manager'dan `AWSCURRENT` sürümünü alır.
+Havuzdaki açık bağlantılar yeniden kullanılır; her SQL sorgusunda AWS çağrısı yapılmaz.
+Şifre değişince uygulamanın yeniden deploy edilmesi gerekmez. Ek bir parola
+önbelleği veya SQL/ödeme/biletleme işlemlerini yeniden çalıştıran retry yoktur.
+Secrets Manager erişilemezse yeni bağlantı güvenli şekilde başarısız olur;
+eski veya kaynak koddaki şifreye dönülmez. Secret JSON'u ve şifre loglanmaz.
+Secret ARN verilmediğinde yerel geliştirmedeki mevcut bağlantı ayarları çalışır.
+`system/health` uygulama canlılığını, `system/ready` gerçek veritabanı erişimini
+kontrol eder. Deploy her iki kontrolü de doğrular.
 
 ## Ziraat Sanal POS
 

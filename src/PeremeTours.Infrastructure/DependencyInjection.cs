@@ -1,5 +1,6 @@
 using Amazon;
 using Amazon.S3;
+using Amazon.SecretsManager;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -30,10 +31,36 @@ public static class DependencyInjection
         IConfiguration configuration
     )
     {
-        var connectionString = BuildConnectionString(configuration);
-
-        services.AddDbContext<PeremeToursDbContext>(options =>
-            options.UseNpgsql(connectionString)
+        var secretArn = configuration["Database:SecretArn"];
+        var connectionString = BuildConnectionString(configuration, !string.IsNullOrWhiteSpace(secretArn));
+        if (!string.IsNullOrWhiteSpace(secretArn))
+        {
+            services.AddSingleton<IAmazonSecretsManager>(_ => new AmazonSecretsManagerClient(
+                new AmazonSecretsManagerConfig
+                {
+                    RegionEndpoint = RegionEndpoint.GetBySystemName(
+                        configuration["Database:SecretRegion"] ?? "eu-central-1"),
+                    Timeout = TimeSpan.FromSeconds(5),
+                    MaxErrorRetry = 1,
+                }));
+            services.AddSingleton(provider => new DatabasePasswordProvider(
+                provider.GetRequiredService<IAmazonSecretsManager>(), secretArn));
+        }
+        services.AddSingleton(provider =>
+        {
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+            if (!string.IsNullOrWhiteSpace(secretArn))
+            {
+                var passwords = provider.GetRequiredService<DatabasePasswordProvider>();
+                dataSourceBuilder.UsePasswordProvider(
+                    settings => passwords.GetPasswordAsync(settings, CancellationToken.None)
+                        .AsTask().GetAwaiter().GetResult(),
+                    passwords.GetPasswordAsync);
+            }
+            return dataSourceBuilder.Build();
+        });
+        services.AddDbContext<PeremeToursDbContext>((provider, options) =>
+            options.UseNpgsql(provider.GetRequiredService<NpgsqlDataSource>())
         );
         services.Configure<JwtOptions>(
             configuration.GetSection(JwtOptions.SectionName)
@@ -103,14 +130,18 @@ public static class DependencyInjection
         return services;
     }
 
-    private static string BuildConnectionString(IConfiguration configuration)
+    internal static string BuildConnectionString(IConfiguration configuration, bool useSecret)
     {
         var configured = configuration.GetConnectionString(
             "PeremeToursDatabase"
         );
         if (!string.IsNullOrWhiteSpace(configured))
         {
-            return configured;
+            if (!useSecret) return configured;
+            var settings = new NpgsqlConnectionStringBuilder(configured);
+            settings.Remove("Password");
+            settings.Remove("Passfile");
+            return settings.ConnectionString;
         }
 
         var host = configuration["Database:Host"];
@@ -120,7 +151,7 @@ public static class DependencyInjection
         if (
             string.IsNullOrWhiteSpace(host)
             || string.IsNullOrWhiteSpace(username)
-            || string.IsNullOrWhiteSpace(password)
+            || (!useSecret && string.IsNullOrWhiteSpace(password))
             || string.IsNullOrWhiteSpace(database)
         )
         {
@@ -135,7 +166,7 @@ public static class DependencyInjection
             Port = configuration.GetValue("Database:Port", 5432),
             Database = database,
             Username = username,
-            Password = password,
+            Password = useSecret ? null : password,
             SslMode = SslMode.Require,
             Timeout = 15,
             CommandTimeout = 30,

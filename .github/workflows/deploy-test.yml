@@ -108,7 +108,10 @@ jobs:
               ephemeralStorage
             }
             | .containerDefinitions |= map(
-                if .name == $container then .image = $image else . end
+                if .name == $container then
+                  .image = $image
+                  | .secrets = ((.secrets // []) | map(select(.name != "Database__Password")))
+                else . end
               )
             | with_entries(select(.value != null))
           ' current-task-definition.json > next-task-definition.json
@@ -178,3 +181,6 @@ jobs:
 
       - name: Verify public health endpoint
         run: curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 10 https://api-peremetours-test.d1-tech.com/api/v1/system/health
+
+      - name: Verify database readiness
+        run: curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 10 --max-time 10 https://api-peremetours-test.d1-tech.com/api/v1/system/ready

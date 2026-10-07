@@ -16,7 +16,7 @@ public sealed class HealthEndpointTests
         {
             builder.UseSetting(
                 "ConnectionStrings:PeremeToursDatabase",
-                "Host=localhost;Port=5432;Database=peremetours_tests;Username=postgres;Password=postgres"
+                "Host=127.0.0.1;Port=1;Database=peremetours_tests;Username=postgres;Password=postgres;Timeout=1"
             );
             builder.UseSetting(
                 "Jwt:Key",
@@ -30,6 +30,17 @@ public sealed class HealthEndpointTests
     {
         var response = await _client.GetAsync("/api/v1/system/health");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReadinessReportsUnavailableDatabaseWithoutConnectionDetails()
+    {
+        var response = await _client.GetAsync("/api/v1/system/ready");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("not_ready", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("postgres", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Password", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

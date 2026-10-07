@@ -292,7 +292,6 @@ Resources:
                   - !Ref AdminPasswordSecret
                   - !Ref EasyTicketApiKeySecret
                   - !Ref ZiraatPosSecret
-                  - !GetAtt Database.MasterUserSecret.SecretArn
               - Effect: Allow
                 Action:
                   - ssm:GetParameters
@@ -310,6 +309,13 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       Policies:
+        - PolicyName: ReadCurrentPeremeToursDatabasePassword
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !GetAtt Database.MasterUserSecret.SecretArn
         - PolicyName: ManagePeremeToursTourImages
           PolicyDocument:
             Version: "2012-10-17"
@@ -431,6 +437,10 @@ Resources:
               Value: peremetours
             - Name: Database__Username
               Value: peremetours_app
+            - Name: Database__SecretArn
+              Value: !GetAtt Database.MasterUserSecret.SecretArn
+            - Name: Database__SecretRegion
+              Value: !Ref AWS::Region
             - Name: Jwt__Issuer
               Value: PeremeTours.Api
             - Name: Jwt__Audience
@@ -482,8 +492,6 @@ Resources:
           Secrets:
             - Name: MailSettings__Password
               ValueFrom: !Ref DenturSmtpPasswordParameterArn
-            - Name: Database__Password
-              ValueFrom: !Join [":", [!GetAtt Database.MasterUserSecret.SecretArn, "password::"]]
             - Name: Jwt__Key
               ValueFrom: !Ref JwtSigningSecret
             - Name: DeploymentBootstrap__AdminPassword
