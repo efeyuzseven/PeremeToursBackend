@@ -34,13 +34,13 @@ internal sealed class TourPaymentService(
     public async Task<TourPaymentStatus?> GetStatusAsync(Guid attemptId, CancellationToken cancellationToken)
     {
         if (attemptId == Guid.Empty) return null;
-        var ticket = await dbContext.TourTickets.AsNoTracking().Include(item => item.Passengers).Include(item => item.PaymentEmail)
+        var ticket = await dbContext.TourTickets.AsNoTracking().Include(item => item.Passengers).Include(item => item.PaymentEmail).Include(item => item.Cancellation)
             .SingleOrDefaultAsync(item => item.PaymentAttemptId == attemptId, cancellationToken);
         return ticket is null ? null : new TourPaymentStatus(ticket.TicketCode, ticket.Amount, ticket.Currency,
             ticket.PaymentStatus.ToString(), ticket.TicketingStatus.ToString(),
-            ticket.TicketingStatus == TicketingStatus.Issued
+            ticket.Cancellation is null && ticket.Status == TicketStatus.Confirmed && ticket.PaymentStatus == TicketPaymentStatus.Paid && ticket.TicketingStatus == TicketingStatus.Issued
                 ? ticket.Passengers.OrderBy(item => item.Sequence).Select(item => new IssuedTourTicket(item.Pnr, item.ExternalTicketGuid)).ToArray()
-                : [], ticket.PaymentEmail?.Status.ToString());
+                : [], ticket.PaymentEmail?.Status.ToString(), ticket.Cancellation?.DisplayStatus(timeProvider.GetUtcNow().UtcDateTime).ToString());
     }
 
     public async Task<StartTourPaymentResult> StartAsync(StartTourPaymentCommand command, CancellationToken cancellationToken)

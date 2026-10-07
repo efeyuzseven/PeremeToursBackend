@@ -57,7 +57,7 @@ public sealed record PaymentAvailability(bool Enabled, string Provider);
 public sealed record IssuedTourTicket(string? Pnr, string? TicketGuid);
 public sealed record TourPaymentStatus(
     string TicketCode, decimal Amount, string Currency, string PaymentStatus,
-    string TicketingStatus, IReadOnlyList<IssuedTourTicket> Tickets, string? EmailStatus = null
+    string TicketingStatus, IReadOnlyList<IssuedTourTicket> Tickets, string? EmailStatus = null, string? CancellationStatus = null
 );
 
 public interface ITourPaymentService

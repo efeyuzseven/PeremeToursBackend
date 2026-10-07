@@ -132,6 +132,19 @@ public sealed class TourPaymentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CancellationHidesOldTicketGuidsWithoutAnotherAuthorization()
+    {
+        var command = Command(); var start = await _service.StartAsync(command, CancellationToken.None);
+        await _service.CompleteAsync(Callback(start), CancellationToken.None);
+        _db.TicketCancellations.Add(new TicketCancellation { TicketId = start.TicketId, ActorUserId = Guid.NewGuid(), Reason = "Test", Amount = start.Amount,
+            Status = TicketCancellationStatus.ReviewRequired, RequestedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+        var status = await _service.GetStatusAsync(command.AttemptId, CancellationToken.None);
+        Assert.Empty(status!.Tickets); Assert.Equal("ReviewRequired", status.CancellationStatus);
+        Assert.Equal(1, _bank.AuthCalls);
+    }
+
+    [Fact]
     public async Task StandardZiraatXmlCompletesPaymentAndIssuesOnlyOnce()
     {
         using var handler = new StandardBankResponseHandler();

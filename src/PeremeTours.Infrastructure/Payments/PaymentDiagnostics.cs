@@ -12,6 +12,8 @@ internal static partial class PaymentDiagnostics
         "PROVIDER_RESULT_UNKNOWN", "PROVIDER_RESULT_INCOMPLETE", "HISTORICAL_PAYMENT_FAILED", "HISTORICAL_TICKETING_FAILED",
         "SMTP_CONFIG_MISSING", "EMAIL_ADDRESS_INVALID", "SMTP_TLS_FAILED", "SMTP_AUTH_FAILED", "SMTP_CONNECT_FAILED",
         "SMTP_SEND_REJECTED", "SMTP_RESULT_UNKNOWN",
+        "CANCELLATION_RESULT_UNKNOWN", "BANK_CANCELLATION_CHECK_FAILED", "BANK_REVERSAL_REJECTED", "BANK_REVERSAL_UNKNOWN",
+        "PROVIDER_CANCELLATION_CHECK_FAILED", "PROVIDER_CANCELLATION_REJECTED", "PROVIDER_CANCELLATION_UNKNOWN",
     };
     // Never persist arbitrary provider messages: they can contain PAN, tokens, credentials or passenger data.
     public static string SafeCode(string? value, string fallback) => value is not null && (KnownCodes.Contains(value) || CodePattern().IsMatch(value))

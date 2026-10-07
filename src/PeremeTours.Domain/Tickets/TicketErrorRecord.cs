@@ -1,6 +1,6 @@
 namespace PeremeTours.Domain.Tickets;
 
-public enum TicketErrorStage { Payment, Ticketing, Email }
+public enum TicketErrorStage { Payment, Ticketing, Email, Cancellation }
 
 public sealed class TicketErrorRecord
 {

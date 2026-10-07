@@ -16,6 +16,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
         var tickets = await dbContext.TourTickets
             .AsNoTracking()
             .Include(ticket => ticket.PaymentEmail)
+            .Include(ticket => ticket.Cancellation)
             .OrderByDescending(ticket => ticket.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         return tickets.Select(Map).ToList();
@@ -58,7 +59,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
         CancellationToken cancellationToken
     )
     {
-        var ticket = await dbContext.TourTickets.SingleOrDefaultAsync(
+        var ticket = await dbContext.TourTickets.Include(item => item.Cancellation).SingleOrDefaultAsync(
             candidate => candidate.Id == ticketId,
             cancellationToken
         );
@@ -66,6 +67,9 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
         {
             return null;
         }
+
+        if (ticket.Cancellation is not null)
+            throw new TicketUpdateValidationException("İptal/iade işlemi başlayan bilet manuel olarak değiştirilemez.");
 
         if (ticket.PaymentProvider is not null && (command.TourName is not null || command.TourDate is not null
             || command.DepartureTime is not null || command.CustomerName is not null || command.CustomerEmail is not null
@@ -75,6 +79,18 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
                 && ticket.TicketingStatus == TicketingStatus.Issued))))
         {
             throw new TicketUpdateValidationException("Banka işlemi ve EasyTicket bileti manuel olarak değiştirilemez. İptal/iade ayrı bir banka ve bilet kontrolü gerektirir.");
+        }
+
+        if (ticket.PaymentProvider is not null && command.Status == TicketStatus.Used)
+        {
+            var updated = await dbContext.TourTickets.Where(item => item.Id == ticketId && item.Status == TicketStatus.Confirmed
+                    && item.PaymentStatus == TicketPaymentStatus.Paid && item.TicketingStatus == TicketingStatus.Issued
+                    && !dbContext.TicketCancellations.Any(cancel => cancel.TicketId == item.Id))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Status, TicketStatus.Used)
+                    .SetProperty(item => item.UpdatedAtUtc, DateTimeOffset.UtcNow), cancellationToken);
+            if (updated != 1) throw new TicketUpdateValidationException("Bilet başka bir işlem tarafından değiştirildi. Listeyi yenileyin.");
+            await dbContext.Entry(ticket).ReloadAsync(cancellationToken);
+            return Map(ticket);
         }
 
         if (command.TourName is not null)
@@ -136,7 +152,13 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             ticket.TicketingFailureCode,
             ticket.PaymentFailureCode,
             ticket.PaymentEmail?.Status,
-            ticket.PaymentEmail?.SentAtUtc
+            ticket.PaymentEmail?.SentAtUtc,
+            ticket.Cancellation?.DisplayStatus(DateTime.UtcNow).ToString(),
+            ticket.Cancellation?.DisplayStatus(DateTime.UtcNow) != ticket.Cancellation?.Status
+                ? "CANCELLATION_RESULT_UNKNOWN" : ticket.Cancellation?.FailureCode,
+            ticket.Cancellation is null && ticket.Status == TicketStatus.Confirmed && ticket.PaymentStatus == TicketPaymentStatus.Paid
+                && ticket.TicketingStatus == TicketingStatus.Issued && ticket.PaymentProvider == "Ziraat"
+                && Guid.TryParse(ticket.ExternalVoucherGuid, out _)
         );
 
     private static string CreateTicketCode(DateTimeOffset now) =>

@@ -79,6 +79,18 @@ public sealed class PaymentEmailTests : IDisposable
     }
 
     [Fact]
+    public async Task CancellationClaimPreventsQueuedPaymentConfirmationFromBeingSent()
+    {
+        await QueueAsync();
+        var ticket = await _db.TourTickets.SingleAsync();
+        _db.TicketCancellations.Add(new TicketCancellation { TicketId = ticket.Id, ActorUserId = Guid.NewGuid(), Reason = "Test", Amount = ticket.Amount,
+            Status = TicketCancellationStatus.Processing, RequestedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow });
+        await _db.SaveChangesAsync(); _db.ChangeTracker.Clear();
+        Assert.False(await Processor().ProcessNextAsync(CancellationToken.None));
+        Assert.Equal(0, _sender.Calls);
+    }
+
+    [Fact]
     public async Task SuccessfulSendIsPersistedAndCannotBeSentAgain()
     {
         await QueueAsync();

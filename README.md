@@ -189,6 +189,30 @@ sonuç sunucudan okunur. Sekme yenilenirse yalnızca opak işlem token'ı sessio
 üzerinden geri alınır; kart/yolcu bilgileri saklanmaz. Başarısızlığı kesinleşmeyen
 işlem için yeni ödeme önerilmez. Ödeme kart alanları sadece fiyat onay ekranında açılır.
 
+## Kullanıcı hesabı ve rezervasyon iptali
+
+`GET /api/v1/account/profile` ve `GET /api/v1/account/reservations` yalnızca aktif,
+JWT ile giriş yapmış kullanıcının kendi bilgilerini sunar (`Cache-Control: no-store`).
+Rezervasyon sahipliği `UserId` ile doğrulanır; aynı iletişim e-postasına sahip misafir
+rezervasyonları doğrulanmamış üyeliğe otomatik bağlanmaz. Kimlik/pasaport, kart/CVC ve
+şifre hash'i bu cevaplara dahil edilmez. QR yalnızca geçerli, ödenmiş EasyTicket
+biletinin gerçek `ExternalTicketGuid` değeriyle gösterilir; iptal istenince gizlenir.
+
+`POST /api/v1/admin/tickets/{id}/cancel` aktif Admin hesabı, ekrandaki `ticketCode`,
+`expectedAmount` ve 1–300 karakter `reason` ister. Tam rezervasyon iptali desteklenir;
+kısmi yolcu/tutar iadesi yapılmaz. Önce bankadan salt okunur `ORDERSTATUS QUERY` ile
+sipariş, işlem ve tam tutar doğrulanır. Ardından EasyTicket voucher içeriği kontrol
+edilip `web-bilet-iptal` JSON-string sözleşmesiyle tek kez iptal edilir. Banka
+durumuna göre `Void` veya tam tutarlı `Credit` uygulanır. Sadece sağlayıcı ve banka
+onayıyla `Cancelled` + `Refunded` kaydedilir. Kart bilgisi yeniden istenmez.
+
+Tekil `TicketCancellations` kaydı, işlemi yapan admini, nedeni ve aşamaları kalıcı
+tutar. Çift tıklama/tekrar istek mevcut kaydı döndürür; banka veya EasyTicket işlemi
+tekrarlanmaz. Timeout, process çökmesi veya kısmi başarı `ReviewRequired` gösterir;
+manuel banka/EasyTicket kontrolü gerekir, otomatik iade tekrarı yapılmaz.
+`GET /api/v1/admin/tickets/{id}/cancellation` mevcut kaydı salt okunur gösterir.
+Testler taklit sağlayıcılarla çalışır; gerçek rezervasyon iptal ederek test yapılmaz.
+
 ## Ödeme e-postası ve hata kayıtları
 
 `Paid` durumu ile tekil `PaymentEmails` kaydı aynı veritabanı işlemiyle kaydedilir.
@@ -230,6 +254,7 @@ ulaşmayı garanti etmez; spam/bounce takibi gönderici mail sunucusunun sorumlu
 
 Admin ekranı: `/admin/ticket-errors`; sadece Admin rolü erişebilir.
 API: `GET /api/v1/admin/ticket-errors?stage=Payment&page=1&pageSize=20&search=PRM-`.
+`stage=Cancellation` ile iptal/iade hataları ayrıca filtrelenir.
 Ödeme, biletleme ve mail hataları ayrı filtrelenir; rezervasyon/hata koduyla aranır.
 Eski başarısız kayıtlar migration ile `IsHistorical=true` olarak taşınır; orijinal
 banka mesajı yoksa uydurulmaz. Eski başarılı ödemelere geriye dönük mail gönderilmez.

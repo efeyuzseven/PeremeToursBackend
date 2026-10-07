@@ -23,6 +23,7 @@ public sealed class TourTicket
     public string DeparturePortName { get; set; } = string.Empty;
 
     public PaymentEmail? PaymentEmail { get; set; }
+    public TicketCancellation? Cancellation { get; set; }
 
     public string? CustomerPhone { get; set; }
 

@@ -36,12 +36,14 @@ internal sealed class PaymentEmailProcessor(PeremeToursDbContext db, IPaymentEma
             return true;
         }
         var id = await db.PaymentEmails.AsNoTracking().Where(item => item.Status == PaymentEmailStatus.Queued
-                && item.NextAttemptAtUtc <= now && item.Ticket.PaymentStatus == TicketPaymentStatus.Paid)
+                && item.NextAttemptAtUtc <= now && item.Ticket.PaymentStatus == TicketPaymentStatus.Paid
+                && item.Ticket.Status != TicketStatus.Cancelled && item.Ticket.Cancellation == null)
             .OrderBy(item => item.NextAttemptAtUtc).Select(item => (Guid?)item.TicketId).FirstOrDefaultAsync(cancellationToken);
         if (!id.HasValue) return false;
         var token = Guid.NewGuid();
         var claimed = await db.PaymentEmails.Where(item => item.TicketId == id.Value
-                && item.Status == PaymentEmailStatus.Queued && item.NextAttemptAtUtc <= now)
+                && item.Status == PaymentEmailStatus.Queued && item.NextAttemptAtUtc <= now
+                && item.Ticket.PaymentStatus == TicketPaymentStatus.Paid && item.Ticket.Status != TicketStatus.Cancelled && item.Ticket.Cancellation == null)
             .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Status, PaymentEmailStatus.Processing)
                 .SetProperty(item => item.LockToken, token).SetProperty(item => item.LockedUntilUtc, now.AddMinutes(3))
                 .SetProperty(item => item.AttemptCount, item => item.AttemptCount + 1), cancellationToken);

@@ -71,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITicketErrorService, TicketErrorService>();
+        services.AddScoped<ITicketCancellationService, TicketCancellationService>();
         services.AddScoped<ITourPaymentService, TourPaymentService>();
         services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
         services.AddScoped<IPaymentEmailSender, SmtpPaymentEmailSender>();
@@ -91,6 +92,18 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
             client.MaxResponseContentBufferSize = 256_000;
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddHttpClient<IBankCancellationGateway, ZiraatCancellationGateway>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(25);
+            client.MaxResponseContentBufferSize = 256_000;
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddHttpClient<IEasyTicketCancellationGateway, EasyTicketCancellationGateway>((provider, client) =>
+        {
+            var settings = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<EasyTicketOptions>>().Value;
+            if (Uri.TryCreate(settings.BaseUrl, UriKind.Absolute, out var uri)) client.BaseAddress = uri;
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.MaxResponseContentBufferSize = 131_072;
         }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IEasyTicketSalesGateway, EasyTicketSalesGateway>((provider, client) =>
         {

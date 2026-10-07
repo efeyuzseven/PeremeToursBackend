@@ -23,7 +23,10 @@ public sealed record TicketSummary(
     string? TicketingFailureCode,
     string? PaymentFailureCode,
     PaymentEmailStatus? EmailStatus,
-    DateTime? EmailSentAtUtc
+    DateTime? EmailSentAtUtc,
+    string? CancellationStatus = null,
+    string? CancellationFailureCode = null,
+    bool CanCancel = false
 );
 
 public sealed record CreateTicketCommand(

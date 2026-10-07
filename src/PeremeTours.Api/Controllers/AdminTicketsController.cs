@@ -5,15 +5,44 @@ using Microsoft.AspNetCore.Mvc;
 using PeremeTours.Application.Tickets;
 using PeremeTours.Domain.Tickets;
 using PeremeTours.Domain.Users;
+using Microsoft.EntityFrameworkCore;
+using PeremeTours.Infrastructure.Persistence;
 
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
 [Authorize(Roles = UserRoles.Admin)]
 [Route("api/v1/admin/tickets")]
-public sealed class AdminTicketsController(ITicketService ticketService)
+public sealed class AdminTicketsController(ITicketService ticketService, ITicketCancellationService cancellationService, PeremeToursDbContext db)
     : ControllerBase
 {
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult<TicketCancellationSummary>> Cancel(Guid id, CancelTicketRequest request, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId)
+            || !await db.Users.AnyAsync(item => item.Id == actorId && item.IsActive && item.Role == UserRoles.Admin, cancellationToken))
+            return Forbid();
+        Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var result = await cancellationService.CancelAsync(id, actorId,
+                new CancelTicketCommand(request.TicketCode, request.ExpectedAmount, request.Reason), cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (TicketCancellationValidationException exception)
+        { return Problem(statusCode: 409, title: "Bilet iptal edilemez", detail: exception.Message); }
+        catch (Exception exception) when (exception is DbUpdateException
+            || exception is Npgsql.PostgresException { SqlState: "40001" })
+        { return Problem(statusCode: 409, title: "İşlem durumu kontrol edilmeli", detail: "Bilet başka bir işlem tarafından değiştirildi. Listeyi yenileyin; yeni iptal veya iade başlatmayın."); }
+    }
+
+    [HttpGet("{id:guid}/cancellation")]
+    public async Task<ActionResult<TicketCancellationSummary>> Cancellation(Guid id, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var result = await cancellationService.GetAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<TicketSummary>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TicketSummary>>> List(
@@ -80,6 +109,14 @@ public sealed class AdminTicketsController(ITicketService ticketService)
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Bilet değiştirilemez", detail: exception.Message);
         }
     }
+}
+
+public sealed class CancelTicketRequest
+{
+    [Required, StringLength(32)] public required string TicketCode { get; init; }
+    [Range(typeof(decimal), "0.01", "9999999999", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
+    public decimal ExpectedAmount { get; init; }
+    [Required, StringLength(300, MinimumLength = 1)] public required string Reason { get; init; }
 }
 
 public sealed class CreateTicketRequest
