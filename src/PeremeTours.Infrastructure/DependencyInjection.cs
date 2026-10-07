@@ -87,6 +87,11 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
             client.MaxResponseContentBufferSize = 1_000_000;
         });
+        services.AddHttpClient<CancelledPaymentReconciler>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.MaxResponseContentBufferSize = 256_000;
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IEasyTicketSalesGateway, EasyTicketSalesGateway>((provider, client) =>
         {
             var easyTicket = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<EasyTicketOptions>>().Value;

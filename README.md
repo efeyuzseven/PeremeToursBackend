@@ -226,3 +226,21 @@ API: `GET /api/v1/admin/ticket-errors?stage=Payment&page=1&pageSize=20&search=PR
 Eski başarısız kayıtlar migration ile `IsHistorical=true` olarak taşınır; orijinal
 banka mesajı yoksa uydurulmaz. Eski başarılı ödemelere geriye dönük mail gönderilmez.
 Tur biletleri listesinde mailin kuyruk/gönderim/hata durumu da görünür.
+
+### Bankada iptal edilmiş, bileti kesilmemiş test ödemesini kapatma
+
+Operasyon komutu yalnızca **bankada daha önce onaylanmış iptali** site kaydıyla
+eşleştirir. Yeni tahsilat, banka iptali/iadesi veya EasyTicket satışı başlatmaz.
+Sipariş, banka işlem numarası, kuruş bazında tutar ve banka `V/CNCL` durumu
+`ORDERSTATUS=QUERY` ile doğrulanmadan kayıt değiştirilmez. Banka sonucu belirsiz,
+bileti kesilmiş veya mail kuyruğu olan işlemler otomatik kapatılamaz.
+
+```powershell
+dotnet PeremeTours.Api.dll --reconcile-cancelled-payment PRM-SIPARIS-KODU --expected-amount 350.00 --expected-bank-transaction BANKA-ISLEM-NUMARASI
+```
+
+AWS'de mevcut ECS task definition ve aynı özel ağ ile tek seferlik task olarak
+çalıştırılır; bu bir HTTP endpoint değildir. Sonuç `Status=Cancelled`,
+`PaymentStatus=Refunded`, `TicketingStatus=NotRequired` olur. Geçmiş hata kayıtları
+ve müşterinin son durumu okuyabilmesi için ödeme kurtarma anahtarı korunur.
+Komut tekrar çalıştırıldığında ikinci bir değişiklik/finansal işlem yapmaz.

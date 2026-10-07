@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -7,10 +8,12 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using PeremeTours.Application.Payments;
 using PeremeTours.Infrastructure;
 using PeremeTours.Infrastructure.Authentication;
 using PeremeTours.Infrastructure.Email;
 using PeremeTours.Infrastructure.Persistence;
+using PeremeTours.Infrastructure.Payments;
 
 var builder = WebApplication.CreateBuilder(args);
 var isBootstrapCommand = args.Contains(
@@ -146,6 +149,40 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var app = builder.Build();
+
+if (args.Contains("--reconcile-cancelled-payment", StringComparer.OrdinalIgnoreCase))
+{
+    string? CommandValue(string name)
+    {
+        var index = Array.FindIndex(args, item => item.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+    }
+    var orderId = CommandValue("--reconcile-cancelled-payment");
+    var bankTransaction = CommandValue("--expected-bank-transaction");
+    if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(bankTransaction)
+        || !decimal.TryParse(CommandValue("--expected-amount"), NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+    {
+        Console.WriteLine("CANCELLATION_RECONCILIATION_INVALID_ARGUMENTS");
+        Environment.ExitCode = 1;
+        return;
+    }
+    try
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<CancelledPaymentReconciler>()
+            .ReconcileAsync(orderId, amount, bankTransaction, CancellationToken.None);
+        Console.WriteLine("CANCELLATION_RECONCILIATION_COMPLETE");
+    }
+    catch (Exception exception) when (exception is PaymentValidationException or PaymentGatewayException
+        or PaymentConfigurationException or HttpRequestException or OperationCanceledException)
+    {
+        // A failed command must never dump a raw bank response or secret into task logs.
+        Console.WriteLine("CANCELLATION_RECONCILIATION_NOT_VERIFIED");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
 
 if (args.Contains("--check-mail", StringComparer.OrdinalIgnoreCase))
 {
