@@ -67,6 +67,12 @@ internal sealed class ZiraatPosGateway(
             new EventId(3003, nameof(LogAuthorizationFailed)),
             "Ziraat authorization request failed. Application={Application} OrderId={OrderId} StatusCode={StatusCode}"
         );
+    private static readonly Action<ILogger, string, string, string, Exception?> LogInvalidAuthorizationResponse =
+        LoggerMessage.Define<string, string, string>(
+            LogLevel.Warning,
+            new EventId(3004, nameof(LogInvalidAuthorizationResponse)),
+            "Ziraat authorization response could not be verified. Application={Application} OrderId={OrderId} Reason={Reason}"
+        );
     private readonly ZiraatPosOptions _options = options.Value;
 
     public async Task<string> StartThreeDSecureAsync(
@@ -203,6 +209,8 @@ internal sealed class ZiraatPosGateway(
         }
 
         var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(responseXml) || responseXml.Length > MaxGatewayResponseCharacters)
+            throw InvalidAuthorizationResponse(orderId, "INVALID_RESPONSE_SIZE");
         XDocument document;
         try
         {
@@ -210,31 +218,56 @@ internal sealed class ZiraatPosGateway(
         }
         catch (Exception exception) when (exception is System.Xml.XmlException or ArgumentException)
         {
-            throw new PaymentGatewayException("Banka geçersiz bir ödeme yanıtı döndürdü.", exception);
+            // XML/parser details can contain sensitive bank data. Log only a fixed reason code.
+            throw InvalidAuthorizationResponse(orderId, "MALFORMED_XML");
         }
 
-        var bankResponse = Value(document, "Response");
-        var returnCode = Value(document, "ProcReturnCode");
+        if (!string.Equals(document.Root?.Name.LocalName, "CC5Response", StringComparison.OrdinalIgnoreCase))
+            throw InvalidAuthorizationResponse(orderId, "UNEXPECTED_RESPONSE_ROOT");
+
+        var bankResponse = ResponseValue(document, "Response");
+        var returnCode = ResponseValue(document, "ProcReturnCode");
         var approvedResponse = string.Equals(bankResponse, "Approved", StringComparison.OrdinalIgnoreCase);
-        var returnedOrder = Value(document, "OrderId");
-        if ((approvedResponse && (returnCode != "00" || string.IsNullOrWhiteSpace(Value(document, "AuthCode"))
-                || string.IsNullOrWhiteSpace(Value(document, "HostLogKey"))))
-            || (!string.IsNullOrWhiteSpace(returnedOrder) && returnedOrder != orderId)
-            || (!approvedResponse && !string.Equals(bankResponse, "Declined", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(bankResponse, "Error", StringComparison.OrdinalIgnoreCase)))
+        var returnedOrder = ResponseValue(document, "OrderId");
+        var authCode = ResponseValue(document, "AuthCode");
+        // CC5/Nestpay calls this HostRefNum. Keep HostLogKey only as a legacy alias;
+        // never invent a reference or weaken approval/order checks when both are missing.
+        var hostReference = ResponseValue(document, "HostRefNum");
+        if (string.IsNullOrWhiteSpace(hostReference))
+            hostReference = ResponseValue(document, "HostLogKey");
+
+        if ((!string.IsNullOrWhiteSpace(returnedOrder) && returnedOrder != orderId)
+            || (approvedResponse && returnedOrder != orderId))
+            throw InvalidAuthorizationResponse(orderId, "ORDER_MISMATCH");
+
+        if (approvedResponse)
         {
-            throw new PaymentGatewayException("Banka sonucu kesin olarak doğrulanamadı.");
+            if (returnCode != "00")
+                throw InvalidAuthorizationResponse(orderId, "APPROVAL_CODE_MISMATCH");
+            if (string.IsNullOrWhiteSpace(authCode))
+                throw InvalidAuthorizationResponse(orderId, "AUTH_CODE_MISSING");
+            if (string.IsNullOrWhiteSpace(hostReference))
+                throw InvalidAuthorizationResponse(orderId, "HOST_REFERENCE_MISSING");
         }
-        var approved = string.Equals(bankResponse, "Approved", StringComparison.OrdinalIgnoreCase)
-            && returnCode == "00";
+        else if ((!string.Equals(bankResponse, "Declined", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(bankResponse, "Error", StringComparison.OrdinalIgnoreCase))
+            || string.IsNullOrWhiteSpace(returnCode) || returnCode == "00")
+            throw InvalidAuthorizationResponse(orderId, "RESPONSE_STATUS_INVALID");
+
         return new ZiraatFinalizationResult(
-            approved,
-            Value(document, "AuthCode"),
-            Value(document, "HostLogKey"),
+            approvedResponse,
+            authCode,
+            hostReference,
             PaymentDiagnostics.SafeCode(returnCode, "BANK_DECLINED"),
-            Value(document, "ErrMsg"),
+            ResponseValue(document, "ErrMsg"),
             PaymentDiagnostics.SafeProviderCode(Value(document, "ERRORCODE"))
         );
+    }
+
+    private PaymentGatewayException InvalidAuthorizationResponse(string orderId, string reason)
+    {
+        LogInvalidAuthorizationResponse(logger, _options.ApplicationName, orderId, reason, null);
+        return new PaymentGatewayException("Banka sonucu kesin olarak doğrulanamadı.");
     }
 
     private void EnsureConfigured()
@@ -284,6 +317,11 @@ internal sealed class ZiraatPosGateway(
     private static string DigitsOnly(string value) => string.Concat(
         value.Where(char.IsAsciiDigit)
     );
+
+    private static string? ResponseValue(XDocument document, string name) => document.Root?
+        .Elements()
+        .FirstOrDefault(element => string.Equals(element.Name.LocalName, name, StringComparison.OrdinalIgnoreCase))
+        ?.Value.Trim();
 
     private static string? Value(XDocument document, string name) => document
         .Descendants()

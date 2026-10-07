@@ -147,6 +147,13 @@ işlemine dönüştürmez. Kart sahibiyle kontrollü bir 3D Secure alımı ayrı
 Kart numarası, güvenlik kodu ve POS parolaları veritabanına veya uygulama
 loglarına yazılmaz.
 
+CC5 ödeme onayındaki banka referansı `HostRefNum` alanından okunur;
+`HostLogKey` yalnızca eski uyumlu yanıtlar için alternatif alan olarak desteklenir.
+Başarılı yanıt için sipariş kodu eşleşmesi, `Approved` + `00`, onay kodu ve gerçek
+banka referansı zorunludur. Eksik/çelişkili yanıtlar `ReviewRequired` kalır;
+otomatik tahsilat tekrarı yapılmaz. Yanıt doğrulama hataları yalnızca sabit neden
+kodlarıyla loglanır; ham banka XML'i veya parser ayrıntıları loglanmaz.
+
 Ödeme başlatma isteği, sefer/tarih, birden fazla bilet tipi, her biletin yolcusu,
 iletişim bilgileri, KVKK metninin okunduğu onayı, son gösterilen `expectedAmount`,
 rastgele `attemptId` ve geçici kart bilgilerini alır. Tutar sunucuda EasyTicket'tan

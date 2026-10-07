@@ -1,4 +1,7 @@
 using Microsoft.Data.Sqlite;
+using System.Net;
+using System.Text;
+using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -126,6 +129,35 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Equal(PaymentEmailStatus.Queued, email.Status);
         Assert.Equal("tr", email.Ticket.CustomerLanguage);
         Assert.Equal("Kabataş", email.Ticket.DeparturePortName);
+    }
+
+    [Fact]
+    public async Task StandardZiraatXmlCompletesPaymentAndIssuesOnlyOnce()
+    {
+        using var handler = new StandardBankResponseHandler();
+        using var client = new HttpClient(handler);
+        var options = Options.Create(ConfiguredOptions());
+        var gateway = new ZiraatPosGateway(client, options, NullLogger<ZiraatPosGateway>.Instance);
+        var service = new TourPaymentService(_db, _booking, gateway, _sales,
+            options, Options.Create(new EasyTicketOptions { BaseUrl = "https://tickets.example.test", ApiKey = "fake-key" }),
+            TimeProvider.System, NullLogger<TourPaymentService>.Instance);
+        var command = Command();
+        var start = await service.StartAsync(command, CancellationToken.None);
+        var callback = Callback(start);
+        callback["HASH"] = ZiraatPosHash.Create(callback, ConfiguredOptions().StoreKey);
+        _db.ChangeTracker.Clear();
+
+        Assert.True((await service.CompleteAsync(callback, CancellationToken.None)).IsSuccessful);
+        await service.CompleteAsync(callback, CancellationToken.None);
+
+        var status = await service.GetStatusAsync(command.AttemptId, CancellationToken.None);
+        Assert.Equal("Paid", status!.PaymentStatus);
+        Assert.Equal("Issued", status.TicketingStatus);
+        Assert.Equal(1, handler.AuthCalls);
+        Assert.Equal(1, _sales.Calls);
+        Assert.Equal("test-host-reference", (await _db.TourTickets.SingleAsync()).BankHostReference);
+        Assert.Single(await _db.PaymentEmails.ToListAsync());
+        Assert.Empty(await _db.TicketErrorRecords.ToListAsync());
     }
 
     [Fact]
@@ -259,6 +291,27 @@ public sealed class TourPaymentServiceTests : IDisposable
         public Task<TourQuote> QuoteAsync(TourQuoteCommand command, CancellationToken cancellationToken) => Task.FromResult(new TourQuote(
             2, "Turkish Night", 3, "Kabataş", 8366, command.TourDate, new TimeOnly(20, 30),
             [new(145, "Alkolsüz", null, 2, 1150m, 2300m), new(146, "Alkollü", null, 1, 1750m, 1750m)], 3, 4050m, "TRY", DateTimeOffset.UtcNow));
+    }
+    private sealed class StandardBankResponseHandler : HttpMessageHandler
+    {
+        public int AuthCalls { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Equal("bank.example.test", request.RequestUri!.Host);
+            if (request.RequestUri.AbsolutePath == "/start")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html>mock bank</html>") };
+            AuthCalls++;
+            var requestXml = XDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            var response = new XDocument(new XElement("CC5Response",
+                new XElement("OrderId", requestXml.Root!.Element("OrderId")!.Value),
+                new XElement("Response", "Approved"), new XElement("ProcReturnCode", "00"),
+                new XElement("AuthCode", "TEST01"), new XElement("HostRefNum", "test-host-reference"),
+                new XElement("TransId", "test-transaction")));
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(response.ToString(), Encoding.UTF8, "application/xml"),
+            };
+        }
     }
     private sealed class FakeBank : IZiraatPosGateway
     {
