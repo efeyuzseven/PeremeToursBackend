@@ -13,6 +13,7 @@ internal sealed class TourTicketConfiguration : IEntityTypeConfiguration<TourTic
         builder.Property(ticket => ticket.TicketCode).HasMaxLength(32).IsRequired();
         builder.HasIndex(ticket => ticket.TicketCode).IsUnique();
         builder.Property(ticket => ticket.TourName).HasMaxLength(160).IsRequired();
+        builder.Property(ticket => ticket.TourCategoryKey).HasMaxLength(32);
         builder.Property(ticket => ticket.CustomerName).HasMaxLength(160).IsRequired();
         builder.Property(ticket => ticket.CustomerEmail).HasMaxLength(320).IsRequired();
         builder.Property(ticket => ticket.CustomerLanguage).HasMaxLength(2).HasDefaultValue("tr");

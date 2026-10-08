@@ -79,6 +79,9 @@ public static class DependencyInjection
         services.AddScoped<IPaymentEmailSender, SmtpPaymentEmailSender>();
         services.AddScoped<PaymentEmailProcessor>();
         services.AddHostedService<PaymentEmailWorker>();
+        services.AddScoped<IReservationNotificationSender, SmtpPaymentEmailSender>();
+        services.AddScoped<ReservationNotificationProcessor>();
+        services.AddHostedService<ReservationNotificationWorker>();
         services.AddSingleton<ThreeDSecureFrameStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITourBookingService, TourBookingService>();

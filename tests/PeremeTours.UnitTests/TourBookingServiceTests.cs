@@ -18,6 +18,7 @@ public sealed class TourBookingServiceTests
         Assert.Equal(3, result.GuestCount);
         Assert.Equal("TRY", result.Currency);
         Assert.Equal("Kabataş", result.PortName);
+        Assert.Equal(TourCategoryKeys.TurkishNight, result.CategoryKey);
         Assert.Equal("Without Alcohol", result.Tickets[0].TicketTypeEn);
         Assert.Equal(1, catalog.AvailabilityCalls);
 
@@ -111,7 +112,7 @@ public sealed class TourBookingServiceTests
             return Task.FromResult<TourAvailability?>(new TourAvailability(
                 2, "Türk Gecesi", "Türk Gecesi", 1,
                 [new(145, 6, "Alkolsüz", NonAlcoholAmount, Currency, 20, "Without Alcohol"), new(146, 5, "Alkollü", 1750, "TRY", 20, "With Alcohol")],
-                [new(8366, 0, 3, "Kabataş", TourDate, new TimeOnly(20, 30))]
+                [new(8366, 0, 3, "Kabataş", TourDate, new TimeOnly(20, 30))], CategoryKey: TourCategoryKeys.TurkishNight
             ));
         }
     }

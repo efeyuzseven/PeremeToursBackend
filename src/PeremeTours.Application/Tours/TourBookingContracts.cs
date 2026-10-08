@@ -33,7 +33,8 @@ public sealed record TourQuote(
     decimal Amount,
     string Currency,
     DateTimeOffset CheckedAtUtc,
-    int ExternalTripId = 0
+    int ExternalTripId = 0,
+    string? CategoryKey = null
 );
 
 public interface ITourBookingService

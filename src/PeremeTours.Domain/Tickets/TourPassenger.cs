@@ -6,6 +6,7 @@ public sealed class TourPassenger
     public Guid TourTicketId { get; set; }
     public int Sequence { get; set; }
     public int ExternalPriceId { get; set; }
+    public string? TicketType { get; set; }
     public decimal UnitAmount { get; set; }
     public required string FirstName { get; set; }
     public required string LastName { get; set; }

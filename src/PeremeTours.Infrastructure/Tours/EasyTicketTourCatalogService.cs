@@ -195,7 +195,7 @@ public sealed class EasyTicketTourCatalogService(
         CancellationToken cancellationToken
     )
     {
-        await EnsureSupportedTourAsync(externalTourId, cancellationToken);
+        var tour = await EnsureSupportedTourAsync(externalTourId, cancellationToken);
 
         try
         {
@@ -250,7 +250,8 @@ public sealed class EasyTicketTourCatalogService(
                 prices,
                 departures,
                 detail.TurBilgisi.Bilet_Notu?.Trim(),
-                detail.TurBilgisi.Bilet_Notu_En?.Trim()
+                detail.TurBilgisi.Bilet_Notu_En?.Trim(),
+                tour.CategoryKey
             );
         }
         catch (TourCatalogUnavailableException)
@@ -278,16 +279,14 @@ public sealed class EasyTicketTourCatalogService(
         }
     }
 
-    private async Task EnsureSupportedTourAsync(
+    private async Task<TourCatalogItem> EnsureSupportedTourAsync(
         int externalTourId,
         CancellationToken cancellationToken
     )
     {
         var catalog = await ListAsync(cancellationToken);
-        if (catalog.All(tour => tour.ExternalTourId != externalTourId))
-        {
-            throw new KeyNotFoundException("Tur bulunamadı.");
-        }
+        return catalog.SingleOrDefault(tour => tour.ExternalTourId == externalTourId)
+            ?? throw new KeyNotFoundException("Tur bulunamadı.");
     }
 
     private async Task<T?> GetAsync<T>(

@@ -12,6 +12,11 @@ internal interface IPaymentEmailSender
     Task SendAsync(TourTicket ticket, CancellationToken cancellationToken);
 }
 
+internal interface IReservationNotificationSender
+{
+    Task SendAsync(ReservationNotification notification, CancellationToken cancellationToken);
+}
+
 internal sealed class EmailDeliveryException(string code, string message, bool canRetry = false, bool isAmbiguous = false)
     : Exception(message)
 {
@@ -20,7 +25,7 @@ internal sealed class EmailDeliveryException(string code, string message, bool c
     public bool IsAmbiguous { get; } = isAmbiguous;
 }
 
-internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender
+internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender
 {
     private readonly MailOptions _options = options.Value;
 
@@ -35,21 +40,55 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
 
     public async Task SendAsync(TourTicket ticket, CancellationToken cancellationToken)
     {
+        await DeliverAsync(CreateCustomerMessage(ticket), cancellationToken);
+    }
+
+    public async Task SendAsync(ReservationNotification notification, CancellationToken cancellationToken)
+    {
+        await DeliverAsync(CreateReservationMessage(notification), cancellationToken);
+    }
+
+    internal MimeMessage CreateCustomerMessage(TourTicket ticket)
+    {
+        var sender = GetSender();
+        if (!MailboxAddress.TryParse(ticket.CustomerEmail, out var recipient))
+            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "Rezervasyon iletişim e-posta adresi geçersiz.");
+        return CreateMessage(ticket, recipient, sender, PaymentEmailTemplate.Render(ticket, _options), $"pereme-payment-{ticket.Id:N}");
+    }
+
+    internal MimeMessage CreateReservationMessage(ReservationNotification notification)
+    {
+        var sender = GetSender();
+        if (!MailboxAddress.TryParse(notification.RecipientEmail, out var recipient))
+            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "İç rezervasyon bildirimi alıcı adresi geçersiz.");
+        return CreateMessage(notification.Ticket, recipient, sender, ReservationNotificationTemplate.Render(notification.Ticket, _options),
+            $"pereme-reservation-{notification.Id:N}");
+    }
+
+    private MailboxAddress GetSender()
+    {
         if (string.IsNullOrWhiteSpace(_options.Username) || string.IsNullOrWhiteSpace(_options.Password)
             || !MailboxAddress.TryParse(_options.SenderEmail, out var sender))
             throw new EmailDeliveryException("SMTP_CONFIG_MISSING", "Mail sunucusu ayarları eksik; gönderim başlatılmadı.");
-        if (!MailboxAddress.TryParse(ticket.CustomerEmail, out var recipient))
-            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "Rezervasyon iletişim e-posta adresi geçersiz.");
-        var content = PaymentEmailTemplate.Render(ticket, _options);
+        return sender;
+    }
+
+    private MimeMessage CreateMessage(TourTicket ticket, MailboxAddress recipient, MailboxAddress sender, RenderedPaymentEmail content, string messageId)
+    {
         var message = new MimeMessage
         {
             Subject = content.Subject,
-            MessageId = $"pereme-payment-{ticket.Id:N}@{sender.Domain}",
+            MessageId = $"{messageId}@{sender.Domain}",
             Date = ticket.PaidAtUtc ?? ticket.CreatedAtUtc,
             Body = new BodyBuilder { HtmlBody = content.Html, TextBody = content.Text }.ToMessageBody(),
         };
         message.From.Add(new MailboxAddress(_options.SenderName, sender.Address));
         message.To.Add(recipient);
+        return message;
+    }
+
+    private async Task DeliverAsync(MimeMessage message, CancellationToken cancellationToken)
+    {
         using var smtp = new SmtpClient { Timeout = 40_000 };
         await ConnectAsync(smtp, cancellationToken);
         await AuthenticateAsync(smtp, cancellationToken);

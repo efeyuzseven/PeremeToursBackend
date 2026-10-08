@@ -11,6 +11,7 @@ using PeremeTours.Domain.Tickets;
 using PeremeTours.Infrastructure.Payments;
 using PeremeTours.Infrastructure.Persistence;
 using PeremeTours.Infrastructure.Tours;
+using PeremeTours.Infrastructure.Email;
 
 namespace PeremeTours.UnitTests;
 
@@ -30,7 +31,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         _db.Database.EnsureCreated();
         _service = new TourPaymentService(_db, _booking, _bank, _sales,
             Options.Create(ConfiguredOptions()), Options.Create(new EasyTicketOptions { BaseUrl = "https://tickets.example.test", ApiKey = "fake-key" }),
-            TimeProvider.System, NullLogger<TourPaymentService>.Instance);
+            TimeProvider.System, NullLogger<TourPaymentService>.Instance, Options.Create(new MailOptions()));
     }
 
     [Fact]
@@ -40,6 +41,8 @@ public sealed class TourPaymentServiceTests : IDisposable
         var ticket = await _db.TourTickets.Include(item => item.Passengers).SingleAsync();
         Assert.Equal(4050m, result.Amount);
         Assert.Equal(8366, ticket.ExternalTripId); // The real feed supplies id, not sefer_Id.
+        Assert.Equal(TourCategoryKeys.TurkishNight, ticket.TourCategoryKey);
+        Assert.Equal("Alkolsüz", ticket.Passengers[0].TicketType);
         Assert.Equal(3, ticket.Passengers.Count);
         Assert.Equal(1150m, ticket.Passengers[0].UnitAmount);
         Assert.Equal(1750m, ticket.Passengers[2].UnitAmount);
@@ -153,7 +156,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         var gateway = new ZiraatPosGateway(client, options, NullLogger<ZiraatPosGateway>.Instance);
         var service = new TourPaymentService(_db, _booking, gateway, _sales,
             options, Options.Create(new EasyTicketOptions { BaseUrl = "https://tickets.example.test", ApiKey = "fake-key" }),
-            TimeProvider.System, NullLogger<TourPaymentService>.Instance);
+            TimeProvider.System, NullLogger<TourPaymentService>.Instance, Options.Create(new MailOptions()));
         var command = Command();
         var start = await service.StartAsync(command, CancellationToken.None);
         var callback = Callback(start);
@@ -208,6 +211,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Equal(0, _sales.Calls);
         Assert.Equal(TicketPaymentStatus.Failed, (await _db.TourTickets.SingleAsync()).PaymentStatus);
         Assert.Empty(await _db.PaymentEmails.ToListAsync());
+        Assert.Empty(await _db.ReservationNotifications.ToListAsync());
         Assert.Equal(TicketErrorStage.Payment, Assert.Single(await _db.TicketErrorRecords.ToListAsync()).Stage);
     }
 
@@ -239,6 +243,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.Equal(TicketStatus.Pending, (await _db.TourTickets.SingleAsync()).Status);
         Assert.Equal(1, _bank.AuthCalls); Assert.Equal(1, _sales.Calls);
         Assert.Single(await _db.PaymentEmails.ToListAsync());
+        Assert.Empty(await _db.ReservationNotifications.ToListAsync());
         Assert.Equal(TicketErrorStage.Ticketing, Assert.Single(await _db.TicketErrorRecords.ToListAsync()).Stage);
     }
 
@@ -299,11 +304,31 @@ public sealed class TourPaymentServiceTests : IDisposable
         ["currency"] = "949", ["mdStatus"] = "1", ["md"] = "fake-md", ["xid"] = "fake-xid", ["eci"] = "05", ["cavv"] = "fake-cavv",
     };
 
+    [Theory]
+    [InlineData(TourCategoryKeys.TurkishNight, 1)]
+    [InlineData(TourCategoryKeys.Bosphorus, 1)]
+    [InlineData(TourCategoryKeys.Sunset, 2)]
+    [InlineData(TourCategoryKeys.Daytime, 2)]
+    public async Task SuccessfulIssuanceQueuesCorrectStaffRecipientsOnlyOnce(string category, int count)
+    {
+        _booking.CategoryKey = category;
+        var start = await _service.StartAsync(Command(), CancellationToken.None); _db.ChangeTracker.Clear();
+        Assert.Empty(await _db.ReservationNotifications.ToListAsync());
+        Assert.True((await _service.CompleteAsync(Callback(start), CancellationToken.None)).IsSuccessful);
+        await _service.CompleteAsync(Callback(start), CancellationToken.None);
+        var notifications = await _db.ReservationNotifications.ToListAsync();
+        Assert.Equal(count, notifications.Count);
+        Assert.All(notifications, item => Assert.Equal(ReservationNotificationStatus.Queued, item.Status));
+        Assert.Single(await _db.PaymentEmails.ToListAsync());
+        Assert.Equal(1, _bank.AuthCalls); Assert.Equal(1, _sales.Calls);
+    }
+
     private sealed class FakeBooking : ITourBookingService
     {
+        public string CategoryKey { get; set; } = TourCategoryKeys.TurkishNight;
         public Task<TourQuote> QuoteAsync(TourQuoteCommand command, CancellationToken cancellationToken) => Task.FromResult(new TourQuote(
             2, "Turkish Night", 3, "Kabataş", 8366, command.TourDate, new TimeOnly(20, 30),
-            [new(145, "Alkolsüz", null, 2, 1150m, 2300m), new(146, "Alkollü", null, 1, 1750m, 1750m)], 3, 4050m, "TRY", DateTimeOffset.UtcNow));
+            [new(145, "Alkolsüz", null, 2, 1150m, 2300m), new(146, "Alkollü", null, 1, 1750m, 1750m)], 3, 4050m, "TRY", DateTimeOffset.UtcNow, CategoryKey: CategoryKey));
     }
     private sealed class StandardBankResponseHandler : HttpMessageHandler
     {

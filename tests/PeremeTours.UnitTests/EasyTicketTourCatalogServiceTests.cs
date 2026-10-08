@@ -93,6 +93,7 @@ public sealed class EasyTicketTourCatalogServiceTests
         Assert.Equal(350m, result.Prices.Single().Amount);
         Assert.Equal("Without refreshments", result.Prices.Single().PassengerTypeEn);
         Assert.Equal("No transfer", result.BookingNoteEn);
+        Assert.Equal(TourCategoryKeys.Sunset, result.CategoryKey);
     }
 
     private static EasyTicketTourCatalogService CreateService(

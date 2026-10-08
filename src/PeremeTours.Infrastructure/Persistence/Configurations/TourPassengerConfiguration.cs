@@ -12,6 +12,7 @@ internal sealed class TourPassengerConfiguration : IEntityTypeConfiguration<Tour
         builder.HasKey(passenger => passenger.Id);
         builder.HasIndex(passenger => new { passenger.TourTicketId, passenger.Sequence }).IsUnique();
         builder.Property(passenger => passenger.UnitAmount).HasPrecision(12, 2);
+        builder.Property(passenger => passenger.TicketType).HasMaxLength(160);
         builder.Property(passenger => passenger.FirstName).HasMaxLength(80);
         builder.Property(passenger => passenger.LastName).HasMaxLength(80);
         builder.Property(passenger => passenger.Gender).HasMaxLength(6);

@@ -49,7 +49,8 @@ public sealed record TourAvailability(
     IReadOnlyList<TourPrice> Prices,
     IReadOnlyList<TourDeparture> Departures,
     string? BookingNote = null,
-    string? BookingNoteEn = null
+    string? BookingNoteEn = null,
+    string? CategoryKey = null
 );
 
 public interface ITourCatalogService

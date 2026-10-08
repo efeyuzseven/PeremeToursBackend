@@ -9,6 +9,7 @@ using PeremeTours.Application.Tours;
 using PeremeTours.Domain.Tickets;
 using PeremeTours.Infrastructure.Persistence;
 using PeremeTours.Infrastructure.Tours;
+using PeremeTours.Infrastructure.Email;
 
 namespace PeremeTours.Infrastructure.Payments;
 
@@ -16,7 +17,7 @@ internal sealed class TourPaymentService(
     PeremeToursDbContext dbContext, ITourBookingService bookingService,
     IZiraatPosGateway gateway, IEasyTicketSalesGateway salesGateway,
     IOptions<ZiraatPosOptions> options, IOptions<EasyTicketOptions> easyTicketOptions,
-    TimeProvider timeProvider, ILogger<TourPaymentService> logger
+    TimeProvider timeProvider, ILogger<TourPaymentService> logger, IOptions<MailOptions> mailOptions
 ) : ITourPaymentService
 {
     private static readonly TimeZoneInfo IstanbulTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
@@ -70,7 +71,8 @@ internal sealed class TourPaymentService(
         var ticket = new TourTicket
         {
             Id = Guid.NewGuid(), TicketCode = CreateOrderId(now), PaymentAttemptId = command.AttemptId,
-            TourName = quote.TourName.Trim(), TourDate = quote.TourDate, DepartureTime = quote.DepartureTime,
+            TourName = quote.TourName.Trim(), TourCategoryKey = quote.CategoryKey,
+            TourDate = quote.TourDate, DepartureTime = quote.DepartureTime,
             CustomerName = command.CustomerName.Trim(), CustomerEmail = command.CustomerEmail.Trim().ToLowerInvariant(),
             CustomerLanguage = command.Language == "en" ? "en" : "tr", DeparturePortName = quote.PortName,
             CustomerPhone = command.CustomerPhone?.Trim(), GuestCount = quote.GuestCount,
@@ -84,6 +86,7 @@ internal sealed class TourPaymentService(
             {
                 Id = Guid.NewGuid(), Sequence = index,
                 ExternalPriceId = item.ExternalPriceId,
+                TicketType = Limit(quote.Tickets.Single(line => line.ExternalPriceId == item.ExternalPriceId).TicketType, 160),
                 UnitAmount = quote.Tickets.Single(line => line.ExternalPriceId == item.ExternalPriceId).UnitAmount,
                 FirstName = item.FirstName.Trim(), LastName = item.LastName.Trim(), Gender = item.Gender,
                 Nationality = item.Nationality, IdentityNumber = item.IdentityNumber.Trim(), BirthDate = item.BirthDate,
@@ -253,6 +256,8 @@ internal sealed class TourPaymentService(
             ticket.TicketingFailureCode = "PROVIDER_RESULT_UNKNOWN";
         }
         ticket.UpdatedAtUtc = timeProvider.GetUtcNow();
+        // Persist the recipient outbox atomically with successful ticket issuance, not with SMTP delivery.
+        dbContext.ReservationNotifications.AddRange(ReservationNotificationRouting.Create(ticket, mailOptions.Value, ticket.UpdatedAtUtc));
         if (ticket.TicketingFailureCode is not null)
             PaymentDiagnostics.Add(dbContext, ticket.Id, TicketErrorStage.Ticketing, ticket.TicketingFailureCode,
                 "Ödeme alındı; EasyTicket biletleri tam olarak doğrulanamadı. Yeni tahsilat yapmayın; sağlayıcı kaydı kontrol edilmeli.", ticket.UpdatedAtUtc);

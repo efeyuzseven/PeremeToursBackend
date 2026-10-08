@@ -10,6 +10,9 @@ public sealed class TourTicket
 
     public required string TourName { get; set; }
 
+    // Trusted category snapshot from the validated provider catalogue; never inferred from a display title.
+    public string? TourCategoryKey { get; set; }
+
     public DateOnly TourDate { get; set; }
 
     public TimeOnly DepartureTime { get; set; }
