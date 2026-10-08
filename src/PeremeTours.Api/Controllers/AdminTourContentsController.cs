@@ -115,7 +115,7 @@ public sealed class AdminTourContentsController(
         cancellationToken
     ) ? NoContent() : NotFound();
 
-    private static bool HasValidSignature(
+    internal static bool HasValidSignature(
         ReadOnlySpan<byte> content,
         string contentType
     ) => contentType.ToLowerInvariant() switch

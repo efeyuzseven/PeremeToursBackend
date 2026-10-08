@@ -25,6 +25,12 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `POST /api/v1/tours/quote`
 - `GET /api/v1/tours/{externalTourId}/image`
 - `GET /api/v1/site-content/homepage`
+- `GET /api/v1/tour-pages/{key}`
+- `GET /api/v1/tour-pages/{key}/images/{imageId}`
+- `GET /api/v1/admin/tour-pages`
+- `GET /api/v1/admin/tour-pages/{key}`
+- `PUT /api/v1/admin/tour-pages/{key}`
+- `POST /api/v1/admin/tour-pages/{key}/images`
 - `GET /api/v1/faqs`
 - `GET /api/v1/admin/tour-contents`
 - `PUT /api/v1/admin/tour-contents/{externalTourId}`
@@ -57,6 +63,10 @@ Fiyatlar ve bilet tipleri availability uçlarında EasyTicket'tan önbelleksiz a
 Admin panelindeki tur içerik düzenlemeleri `externalTourId` üzerinden PostgreSQL'de tutulur. Başlık, açıklama, rozet, görünürlük ve gösterim sırası EasyTicket kaydını değiştirmeden sitede ezilebilir. JPG, PNG ve WebP kapak görselleri private S3 kovasında saklanır ve yalnızca public görsel endpoint'i üzerinden sunulur.
 
 Ana sayfa metinleri, hizmet kartları, Neden Pereme faydaları, hikâye alanı, son rezervasyon çağrısı ve en fazla 6 Instagram Reel/gönderi bağlantısı iki dilde yönetilebilir. İçerik PostgreSQL'de JSONB olarak tutulur; ilk kurulumda yerleşik TR/EN metinleri kullanılır.
+
+Tur sayfaları `TourPages` tablosunda JSONB olarak tutulur. Sayfa anahtarları dört kategori (`turkish-night`, `sunset`, `daytime`, `bosphorus`) ve katalogdaki gerçek turlar için `tour-{externalTourId}` biçimindedir; bu servis yeni tur oluşturmaz. TR/EN başlık, giriş, CTA ve SEO metinleri; ortak kapak düzeni/görseli; en fazla 8 sıralanabilir, gizlenebilir metin/öne çıkanlar/galeri bölümü yönetilir. Öne çıkanlar en fazla 12 madde, galeri en fazla 6 görsel içerir. Metinler HTML olarak çalıştırılmaz; düzen, renk ve görsel bağlantıları sunucuda doğrulanır. Gizlenen/katalogdan kaldırılan turların public detayları `404` döner. Kategori varsayılanları içerik kaydı oluşturmadan sunulur.
+
+Sayfa görselleri mevcut private S3 kovasında `tour-images/pages/{key}/...` alanında (yapılandırılmış prefix altında) saklanır, `TourPageImages` üzerinden sayfa kapsamlı ve değişmez URL ile sunulur. Dosya boyutu (8 MB), MIME türü ve imza kontrol edilir. Görsel yüklemek tek başına kapak/galeri taslağını yayınlamaz; içerik kaydedilmelidir. Sayfa başına en fazla 40 yüklenmiş görsel tutulur; taslaktan kaldırılan görseller yayındaki eski bağlantıları bozmamak için fiziksel olarak silinmez. Fiyat, ödeme, biletleme ve sefer verileri bu içerikten bağımsızdır.
 
 Sıkça sorulan sorular PostgreSQL'de iki dilde tutulur. Yönetici soruları ekleyebilir, düzenleyebilir, sıralayabilir, yayından kaldırabilir veya silebilir; herkese açık uç yalnızca yayındaki soruları döndürür.
 

@@ -23,19 +23,29 @@ internal interface ITourImageStorage
     Task DeleteAsync(string objectKey, CancellationToken cancellationToken);
 }
 
+internal interface ITourPageImageStorage
+{
+    Task<string> SavePageImageAsync(string pageKey, Stream content, string contentType, CancellationToken cancellationToken);
+}
+
 internal sealed class S3TourImageStorage(
     IAmazonS3 amazonS3,
     IOptions<TourImageStorageOptions> options
-) : ITourImageStorage
+) : ITourImageStorage, ITourPageImageStorage
 {
     private readonly TourImageStorageOptions _options = options.Value;
 
-    public async Task<string> SaveAsync(
+    public Task<string> SaveAsync(
         int externalTourId,
         Stream content,
         string contentType,
         CancellationToken cancellationToken
-    )
+    ) => SaveObjectAsync(externalTourId.ToString(System.Globalization.CultureInfo.InvariantCulture), content, contentType, cancellationToken);
+
+    public Task<string> SavePageImageAsync(string pageKey, Stream content, string contentType, CancellationToken cancellationToken)
+        => SaveObjectAsync($"pages/{pageKey}", content, contentType, cancellationToken);
+
+    private async Task<string> SaveObjectAsync(string path, Stream content, string contentType, CancellationToken cancellationToken)
     {
         EnsureConfigured();
         var extension = contentType switch
@@ -49,7 +59,7 @@ internal sealed class S3TourImageStorage(
             ),
         };
         var prefix = _options.Prefix.Trim('/');
-        var objectKey = $"{prefix}/{externalTourId}/{Guid.NewGuid():N}{extension}";
+        var objectKey = $"{prefix}/{path}/{Guid.NewGuid():N}{extension}";
         await amazonS3.PutObjectAsync(
             new PutObjectRequest
             {

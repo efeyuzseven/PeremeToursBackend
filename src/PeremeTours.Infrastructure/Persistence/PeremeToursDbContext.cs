@@ -22,6 +22,8 @@ public sealed class PeremeToursDbContext(DbContextOptions<PeremeToursDbContext> 
     public DbSet<TourContent> TourContents => Set<TourContent>();
 
     public DbSet<HomepageContent> HomepageContents => Set<HomepageContent>();
+    public DbSet<TourPage> TourPages => Set<TourPage>();
+    public DbSet<TourPageImage> TourPageImages => Set<TourPageImage>();
 
     public DbSet<FrequentlyAskedQuestion> FrequentlyAskedQuestions =>
         Set<FrequentlyAskedQuestion>();

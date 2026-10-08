@@ -119,6 +119,8 @@ public static class DependencyInjection
         });
         services.AddScoped<ITourContentService, TourContentService>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
+        services.AddScoped<ITourPageService, TourPageService>();
+        services.AddScoped<ITourPageImageStorage, S3TourImageStorage>();
         services.AddScoped<
             IFrequentlyAskedQuestionService,
             FrequentlyAskedQuestionService
