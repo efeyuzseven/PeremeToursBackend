@@ -50,6 +50,22 @@ public sealed class PaymentEmailTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(AppContext.BaseDirectory, $"payment-email-preview-{language}.html"), preview.Html);
     }
 
+    [Theory]
+    [InlineData("tr", "/iletisim")]
+    [InlineData("en", "/contact")]
+    public void CustomerAndOperationsEmailsUseTheProductionDomain(string language, string contactPath)
+    {
+        var ticket = Ticket(); ticket.CustomerLanguage = language;
+        foreach (var settings in new[] { new MailOptions(), new MailOptions { WebsiteUrl = "javascript:invalid" } })
+        {
+            var customer = PaymentEmailTemplate.Render(ticket, settings);
+            var operations = ReservationNotificationTemplate.Render(ticket, settings);
+            Assert.Contains($"https://pereme.com.tr{contactPath}", customer.Html + customer.Text, StringComparison.Ordinal);
+            Assert.Contains("https://pereme.com.tr/admin/tickets", operations.Html + operations.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("cloudfront.net", customer.Html + customer.Text + operations.Html + operations.Text, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void UncertainTicketIssuanceNeverPretendsTicketsAreReady()
     {

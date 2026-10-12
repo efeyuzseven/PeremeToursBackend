@@ -59,7 +59,7 @@ internal static class PaymentEmailTemplate
             }
         }
         var url = Uri.TryCreate(options.WebsiteUrl, UriKind.Absolute, out var website) && website.Scheme == Uri.UriSchemeHttps
-            ? website.AbsoluteUri : "https://d2bmjk2h6qp4lz.cloudfront.net/";
+            ? website.AbsoluteUri : "https://pereme.com.tr/";
         var contactUrl = new Uri(new Uri(url), en ? "/contact" : "/iletisim").AbsoluteUri;
         var support = en ? "Questions about your trip? We’re here to help." : "Yolculuğunuzla ilgili bir sorunuz mu var? Yanınızdayız.";
         text.AppendLine(CultureInfo.InvariantCulture, $"{(en ? "Amount paid" : "Ödenen tutar")}: {amount}")

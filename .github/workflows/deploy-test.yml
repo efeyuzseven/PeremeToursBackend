@@ -1,4 +1,4 @@
-name: Deploy backend to AWS test
+name: Deploy backend to AWS production
 
 on:
   push:
@@ -111,6 +111,22 @@ jobs:
                 if .name == $container then
                   .image = $image
                   | .secrets = ((.secrets // []) | map(select(.name != "Database__Password")))
+                  | .environment = (
+                      ((.environment // []) | map(select(
+                        .name != "MailSettings__WebsiteUrl"
+                        and .name != "Payments__Ziraat__FrontendOrigin"
+                        and .name != "Payments__Ziraat__AllowedFrontendOrigins__0"
+                        and .name != "Payments__Ziraat__AllowedFrontendOrigins__1"
+                        and .name != "DeploymentBootstrap__SeedDemoTickets"
+                      )))
+                      + [
+                          {name: "MailSettings__WebsiteUrl", value: "https://pereme.com.tr"},
+                          {name: "Payments__Ziraat__FrontendOrigin", value: "https://pereme.com.tr"},
+                          {name: "Payments__Ziraat__AllowedFrontendOrigins__0", value: "https://www.pereme.com.tr"},
+                          {name: "Payments__Ziraat__AllowedFrontendOrigins__1", value: "https://d2bmjk2h6qp4lz.cloudfront.net"},
+                          {name: "DeploymentBootstrap__SeedDemoTickets", value: "false"}
+                        ]
+                    )
                 else . end
               )
             | with_entries(select(.value != null))

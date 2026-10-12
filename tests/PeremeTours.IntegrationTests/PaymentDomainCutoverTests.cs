@@ -21,6 +21,8 @@ public sealed class PaymentDomainCutoverTests : IClassFixture<WebApplicationFact
             builder.UseSetting("ConnectionStrings:PeremeToursDatabase", "Host=localhost;Database=tests;Username=postgres;Password=postgres");
             builder.UseSetting("Jwt:Key", "pereme-domain-cutover-test-signing-key-2026-secure");
             builder.UseSetting("Payments:Ziraat:FrontendOrigin", TestOrigin);
+            builder.UseSetting("Payments:Ziraat:AllowedFrontendOrigins:0", "https://pereme.com.tr");
+            builder.UseSetting("Payments:Ziraat:AllowedFrontendOrigins:1", "https://www.pereme.com.tr");
             builder.ConfigureTestServices(services => services.AddScoped<ITourPaymentService, FakePayments>());
         });
         _client = _app.CreateClient();

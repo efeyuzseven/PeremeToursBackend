@@ -14,7 +14,7 @@ public sealed class MailOptions
     public string Password { get; set; } = string.Empty;
     public string SenderEmail { get; set; } = string.Empty;
     public string SenderName { get; set; } = "Dentur Pereme";
-    public string WebsiteUrl { get; set; } = "https://d2bmjk2h6qp4lz.cloudfront.net";
+    public string WebsiteUrl { get; set; } = "https://pereme.com.tr";
     public string ReservationRecipient { get; set; } = "reservation@pereme.com.tr";
     public string SunsetDaytimeRecipient { get; set; } = "omacit@pereme.com.tr";
 }

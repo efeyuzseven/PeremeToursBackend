@@ -461,7 +461,7 @@ Resources:
             - Name: DeploymentBootstrap__AdminEmail
               Value: admin@peremetours.com
             - Name: DeploymentBootstrap__SeedDemoTickets
-              Value: "true"
+              Value: "false"
             - Name: EasyTicket__BaseUrl
               Value: https://easyticketapi.denturonline.com
             - Name: EasyTicket__CacheMinutes
@@ -481,11 +481,11 @@ Resources:
             - Name: Payments__Ziraat__CallbackUrl
               Value: https://api-peremetours-test.d1-tech.com/api/v1/payments/ziraat/callback
             - Name: Payments__Ziraat__FrontendOrigin
-              Value: https://d2bmjk2h6qp4lz.cloudfront.net
-            - Name: Payments__Ziraat__AllowedFrontendOrigins__0
               Value: https://pereme.com.tr
-            - Name: Payments__Ziraat__AllowedFrontendOrigins__1
+            - Name: Payments__Ziraat__AllowedFrontendOrigins__0
               Value: https://www.pereme.com.tr
+            - Name: Payments__Ziraat__AllowedFrontendOrigins__1
+              Value: https://d2bmjk2h6qp4lz.cloudfront.net
             - Name: Payments__Ziraat__ApplicationName
               Value: PeremeTours
             - Name: Payments__Ziraat__OrderPrefix
@@ -505,7 +505,7 @@ Resources:
             - Name: MailSettings__SenderName
               Value: Dentur Pereme
             - Name: MailSettings__WebsiteUrl
-              Value: https://d2bmjk2h6qp4lz.cloudfront.net
+              Value: https://pereme.com.tr
           Secrets:
             - Name: MailSettings__Password
               ValueFrom: !Ref DenturSmtpPasswordParameterArn

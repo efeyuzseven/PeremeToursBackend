@@ -39,7 +39,7 @@ internal static class ReservationNotificationTemplate
             AppendRow(label, value, htmlRows, text);
         }
         var website = Uri.TryCreate(options.WebsiteUrl, UriKind.Absolute, out var configured) && configured.Scheme == Uri.UriSchemeHttps
-            ? configured : new Uri("https://d2bmjk2h6qp4lz.cloudfront.net/");
+            ? configured : new Uri("https://pereme.com.tr/");
         var adminUrl = new Uri(website, "/admin/tickets").AbsoluteUri;
         text.AppendLine().AppendLine(CultureInfo.InvariantCulture, $"Ödenen tutar: {amount}")
             .AppendLine(CultureInfo.InvariantCulture, $"Yönetim paneli: {adminUrl}")
