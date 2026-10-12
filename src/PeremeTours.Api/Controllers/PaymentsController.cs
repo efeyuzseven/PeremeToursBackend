@@ -152,8 +152,7 @@ public sealed class PaymentsController(
         Response.Headers["Referrer-Policy"] = "no-referrer";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
-        if (Uri.TryCreate(_options.FrontendOrigin, UriKind.Absolute, out var origin))
-            Response.Headers.ContentSecurityPolicy = $"frame-ancestors {origin.GetLeftPart(UriPartial.Authority)}";
+        Response.Headers.ContentSecurityPolicy = $"frame-ancestors {string.Join(' ', GetFrontendOrigins())}";
         if (html is null)
         {
             Response.StatusCode = StatusCodes.Status410Gone;
@@ -207,11 +206,7 @@ public sealed class PaymentsController(
 
     private ContentResult CallbackPage(CompleteTourPaymentResult result)
     {
-        var frontendOrigin = Uri.TryCreate(
-            _options.FrontendOrigin,
-            UriKind.Absolute,
-            out var configuredOrigin
-        ) ? configuredOrigin.GetLeftPart(UriPartial.Authority) : "https://d2bmjk2h6qp4lz.cloudfront.net";
+        var frontendOrigins = GetFrontendOrigins();
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
         var payload = JsonSerializer.Serialize(new
         {
@@ -235,12 +230,12 @@ public sealed class PaymentsController(
             </head>
             <body>
               <main><h1>{{title}}</h1><p>{{System.Net.WebUtility.HtmlEncode(result.Message)}}</p></main>
-              <script nonce="{{nonce}}">window.parent.postMessage({{payload}},{{JsonSerializer.Serialize(frontendOrigin)}});</script>
+              <script nonce="{{nonce}}">{{JsonSerializer.Serialize(frontendOrigins)}}.forEach(function(origin){window.parent.postMessage({{payload}},origin);});</script>
             </body>
             </html>
             """;
 
-        Response.Headers.ContentSecurityPolicy = $"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; frame-ancestors {frontendOrigin}";
+        Response.Headers.ContentSecurityPolicy = $"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; frame-ancestors {string.Join(' ', frontendOrigins)}";
         Response.Headers.CacheControl = "no-store";
         Response.Headers.Pragma = "no-cache";
         Response.Headers["Referrer-Policy"] = "no-referrer";
@@ -256,6 +251,12 @@ public sealed class PaymentsController(
             ["PaymentProvider"] = "Ziraat",
             ["CorrelationId"] = HttpContext.TraceIdentifier,
         });
+    }
+
+    private IReadOnlyList<string> GetFrontendOrigins()
+    {
+        var origins = _options.GetFrontendOrigins();
+        return origins.Count > 0 ? origins : ["https://d2bmjk2h6qp4lz.cloudfront.net"];
     }
 }
 

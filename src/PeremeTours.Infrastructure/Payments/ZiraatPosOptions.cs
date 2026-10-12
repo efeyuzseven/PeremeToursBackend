@@ -23,6 +23,15 @@ public sealed class ZiraatPosOptions
     public string CallbackUrl { get; init; } = string.Empty;
 
     public string FrontendOrigin { get; init; } = string.Empty;
+    public string[] AllowedFrontendOrigins { get; init; } = [];
+
+    // Explicit HTTPS origin allowlist; never reflect Origin/Referer or use '*'.
+    public IReadOnlyList<string> GetFrontendOrigins() => AllowedFrontendOrigins.Prepend(FrontendOrigin)
+        .Where(value => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            && string.IsNullOrEmpty(uri.UserInfo) && uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.Query)
+            && string.IsNullOrEmpty(uri.Fragment) && !value.Contains('*'))
+        .Select(value => new Uri(value).GetLeftPart(UriPartial.Authority))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public string ApplicationName { get; init; } = "PeremeTours";
 

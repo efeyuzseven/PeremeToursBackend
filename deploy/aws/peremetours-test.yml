@@ -436,6 +436,10 @@ Resources:
               Value: http://+:8080
             - Name: Cors__AllowedOrigins__0
               Value: https://d2bmjk2h6qp4lz.cloudfront.net
+            - Name: Cors__AllowedOrigins__1
+              Value: https://pereme.com.tr
+            - Name: Cors__AllowedOrigins__2
+              Value: https://www.pereme.com.tr
             - Name: Database__Host
               Value: !GetAtt Database.Endpoint.Address
             - Name: Database__Port
@@ -478,6 +482,10 @@ Resources:
               Value: https://api-peremetours-test.d1-tech.com/api/v1/payments/ziraat/callback
             - Name: Payments__Ziraat__FrontendOrigin
               Value: https://d2bmjk2h6qp4lz.cloudfront.net
+            - Name: Payments__Ziraat__AllowedFrontendOrigins__0
+              Value: https://pereme.com.tr
+            - Name: Payments__Ziraat__AllowedFrontendOrigins__1
+              Value: https://www.pereme.com.tr
             - Name: Payments__Ziraat__ApplicationName
               Value: PeremeTours
             - Name: Payments__Ziraat__OrderPrefix

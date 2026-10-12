@@ -97,6 +97,8 @@ dotnet list PeremeTours.slnx package --vulnerable --include-transitive
 
 Backend, diğer projelerde olduğu gibi paylaşılan ALB arkasında ECS/Fargate üzerinde çalışır. PostgreSQL veritabanı private subnetlerde RDS olarak oluşturulur; JWT, veritabanı ve başlangıç admin parolaları Secrets Manager'da tutulur.
 
+Resmî frontend adresi `https://pereme.com.tr` olarak hazırlanmıştır. CORS ve banka iframe/callback politikaları yalnızca açıkça tanımlanmış `https://pereme.com.tr`, `https://www.pereme.com.tr` ve mevcut CloudFront test origin'ine izin verir. `Payments:Ziraat:AllowedFrontendOrigins` geçişte ek origin'leri tanımlar; `FrontendOrigin` mevcut test origin'ini korur. Callback mesajları `*` hedefi kullanmaz ve istemcinin `Origin`/`Referer` başlığından güvenilir hedef türetmez. Banka callback URL'si, POS bilgileri ve kart işleme davranışı değişmemiştir. Cloudflare DNS kesimi doğrulanana kadar `MailSettings:WebsiteUrl` çalışan CloudFront adresinde tutulur; sonrasında `https://pereme.com.tr` yapılmalıdır.
+
 ```powershell
 aws login
 .\scripts\deploy-infrastructure.ps1
