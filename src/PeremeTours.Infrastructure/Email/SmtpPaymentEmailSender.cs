@@ -4,6 +4,7 @@ using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using PeremeTours.Domain.Tickets;
+using PeremeTours.Infrastructure.Authentication;
 
 namespace PeremeTours.Infrastructure.Email;
 
@@ -25,9 +26,26 @@ internal sealed class EmailDeliveryException(string code, string message, bool c
     public bool IsAmbiguous { get; } = isAmbiguous;
 }
 
-internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender
+internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender
 {
     private readonly MailOptions _options = options.Value;
+
+    public async Task SendAsync(string email, string token, string language, CancellationToken cancellationToken)
+    {
+        var sender = GetSender();
+        if (!MailboxAddress.TryParse(email, out var recipient))
+            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "Invalid password reset recipient.");
+        var content = PasswordResetEmailTemplate.Render(token, language);
+        var message = new MimeMessage
+        {
+            Subject = content.Subject, Date = DateTimeOffset.UtcNow,
+            MessageId = $"pereme-password-reset-{Guid.NewGuid():N}@{sender.Domain}",
+            Body = new BodyBuilder { HtmlBody = content.Html, TextBody = content.Text }.ToMessageBody(),
+        };
+        message.From.Add(new MailboxAddress(_options.SenderName, sender.Address));
+        message.To.Add(recipient);
+        await DeliverAsync(message, cancellationToken);
+    }
 
     // No email is sent. Authentication is optional and never writes a message.
     public async Task CheckConnectionAsync(CancellationToken cancellationToken, bool authenticate = false)

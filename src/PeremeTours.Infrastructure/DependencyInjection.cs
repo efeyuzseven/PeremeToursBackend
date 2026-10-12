@@ -68,6 +68,12 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
         services.AddScoped<IAccessTokenService, JwtAccessTokenService>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
+        services.AddSingleton<PasswordResetRequestBuffer>();
+        services.AddSingleton<IPasswordResetRequests>(provider => provider.GetRequiredService<PasswordResetRequestBuffer>());
+        services.AddScoped<PasswordResetService>();
+        services.AddScoped<IPasswordResetService>(provider => provider.GetRequiredService<PasswordResetService>());
+        services.AddScoped<IPasswordResetEmailSender, SmtpPaymentEmailSender>();
+        services.AddHostedService<PasswordResetWorker>();
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITicketErrorService, TicketErrorService>();

@@ -42,6 +42,7 @@ internal sealed class AuthenticationService(
                 ? null
                 : command.LastName.Trim(),
             PasswordHash = string.Empty,
+            AuthenticationStamp = Guid.NewGuid(),
             Role = UserRoles.User,
             IsActive = true,
             CreatedAtUtc = now,
@@ -87,12 +88,20 @@ internal sealed class AuthenticationService(
         }
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
-            account.PasswordHash = passwordHasher.HashPassword(
+            var originalHash = account.PasswordHash;
+            var replacementHash = passwordHasher.HashPassword(
                 account,
                 command.Password
             );
-            account.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            // A simultaneous reset must not be overwritten by a login's legacy-hash upgrade.
+            var updated = await dbContext.Users.Where(user => user.Id == account.Id && user.IsActive
+                    && user.PasswordHash == originalHash && user.AuthenticationStamp == account.AuthenticationStamp)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.PasswordHash, replacementHash)
+                    .SetProperty(user => user.UpdatedAtUtc, now), cancellationToken);
+            if (updated != 1) return null;
+            account.PasswordHash = replacementHash;
+            account.UpdatedAtUtc = now;
         }
 
         return CreateAuthentication(account);
@@ -111,7 +120,8 @@ internal sealed class AuthenticationService(
                 user.Email,
                 user.FirstName,
                 user.LastName,
-                user.Role
+                user.Role,
+                user.AuthenticationStamp
             ))
             .SingleOrDefaultAsync(cancellationToken);
     }
@@ -123,7 +133,8 @@ internal sealed class AuthenticationService(
             account.Email,
             account.FirstName,
             account.LastName,
-            account.Role
+            account.Role,
+            account.AuthenticationStamp
         );
         var token = accessTokenService.Create(user);
         return new AuthenticationResult(

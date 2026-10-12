@@ -14,6 +14,9 @@ public sealed class UserAccount
 
     public required string PasswordHash { get; set; }
 
+    // Null preserves existing sessions until the account's first password reset.
+    public Guid? AuthenticationStamp { get; set; }
+
     public required string Role { get; set; }
 
     public bool IsActive { get; set; }

@@ -17,7 +17,8 @@ public sealed record AuthenticatedUser(
     string Email,
     string FirstName,
     string? LastName,
-    string Role
+    string Role,
+    Guid? AuthenticationStamp = null
 );
 
 public sealed record AuthenticationResult(

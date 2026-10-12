@@ -11,6 +11,8 @@ public sealed class PeremeToursDbContext(DbContextOptions<PeremeToursDbContext> 
 {
     public DbSet<UserAccount> Users => Set<UserAccount>();
 
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+
     public DbSet<TourTicket> TourTickets => Set<TourTicket>();
 
     public DbSet<PaymentEmail> PaymentEmails => Set<PaymentEmail>();

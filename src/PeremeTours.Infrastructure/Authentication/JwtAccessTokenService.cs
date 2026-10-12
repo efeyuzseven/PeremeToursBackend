@@ -34,6 +34,8 @@ internal sealed class JwtAccessTokenService(IOptions<JwtOptions> options)
             new(ClaimTypes.Role, user.Role),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         ];
+        if (user.AuthenticationStamp is { } stamp)
+            claims = [.. claims, new Claim("auth_stamp", stamp.ToString("N"))];
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key)),
             SecurityAlgorithms.HmacSha256

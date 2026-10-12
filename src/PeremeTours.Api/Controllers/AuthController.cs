@@ -3,14 +3,41 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PeremeTours.Application.Authentication;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-public sealed class AuthController(IAuthenticationService authenticationService)
+public sealed class AuthController(IAuthenticationService authenticationService,
+    IPasswordResetRequests resetQueue, IPasswordResetService resetService)
     : ControllerBase
 {
+    [AllowAnonymous]
+    [EnableRateLimiting("password-reset-request")]
+    [HttpPost("forgot-password")]
+    public IActionResult ForgotPassword(ForgotPasswordRequest request)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!resetQueue.TryEnqueue(new PasswordResetRequest(request.Email.Trim(), request.Language)))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        // Email lookup and SMTP happen after this response, including for unknown/inactive accounts.
+        return Accepted(new { message = request.Language == "en"
+            ? "If an active account uses this address, a password reset link will be sent."
+            : "Bu adresle aktif bir hesap varsa şifre sıfırlama bağlantısı gönderilecek." });
+    }
+
+    [AllowAnonymous]
+    [EnableRateLimiting("password-reset-submit")]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!PasswordPolicy.IsValid(request.Password))
+            return Problem(statusCode: 400, title: "PASSWORD_POLICY_INVALID");
+        return await resetService.ResetAsync(request.Token, request.Password, cancellationToken)
+            ? NoContent() : Problem(statusCode: 400, title: "RESET_LINK_INVALID");
+    }
     [AllowAnonymous]
     [HttpPost("register")]
     [ProducesResponseType<AuthResponse>(StatusCodes.Status201Created)]
@@ -146,6 +173,19 @@ public sealed class LoginRequest
 
     [Required, StringLength(128, MinimumLength = 8)]
     public required string Password { get; init; }
+}
+
+public sealed class ForgotPasswordRequest
+{
+    [Required, EmailAddress, StringLength(320)] public required string Email { get; init; }
+    [RegularExpression("^(tr|en)$")] public string Language { get; init; } = "tr";
+}
+
+public sealed class ResetPasswordRequest
+{
+    [Required, StringLength(64, MinimumLength = 64), RegularExpression("^[A-Fa-f0-9]{64}$")]
+    public required string Token { get; init; }
+    [Required, StringLength(128, MinimumLength = 8)] public required string Password { get; init; }
 }
 
 public sealed record AuthResponse(

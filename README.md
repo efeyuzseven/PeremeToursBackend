@@ -99,6 +99,12 @@ Backend, diğer projelerde olduğu gibi paylaşılan ALB arkasında ECS/Fargate 
 
 Canlı frontend adresi `https://pereme.com.tr`'dir; DNS ve HTTPS geçişi 2026-10-12 tarihinde normal DNS ile doğrulanmıştır. `Payments:Ziraat:FrontendOrigin` ve `MailSettings:WebsiteUrl` ana alan adını kullanır. CORS ve banka iframe/callback politikaları yalnızca açıkça tanımlanmış `https://pereme.com.tr`, `https://www.pereme.com.tr` ve mevcut CloudFront origin'ine izin verir; eski açık oturumlar/ödeme dönüşleri korunur. Callback mesajları `*` hedefi kullanmaz ve istemcinin `Origin`/`Referer` başlığından güvenilir hedef türetmez. Banka callback API URL'si, POS bilgileri ve kart işleme davranışı değişmemiştir. Otomatik örnek bilet oluşturma (`DeploymentBootstrap:SeedDemoTickets`) kapalıdır; mevcut kayıtlar silinmez. AWS kaynak adlarındaki `-test` tarihî adlandırmadır; bu ortam canlı kullanıcı, rezervasyon ve ödeme verileri içerir.
 
+### Şifre sıfırlama
+
+`POST /api/v1/auth/forgot-password` (`email`, `language: tr|en`) kayıtlı/kayıtsız/pasif hesaplar için aynı, önbelleğe alınmayan `202` yanıtını verir. Hesap sorgusu ve mevcut SMTP ayarlarıyla TR/EN mail gönderimi HTTP yanıtından bağımsız, 128 istek kapasiteli bellek kuyruğunda çalışır; dolu kuyrukta `503` döner. İşleyici yeniden başlatılırken henüz işlenmeyen talep kaybolursa kullanıcı yeni bağlantı istemelidir. IP başına 15 dakikada 5 talep, hesap başına 1 dakika bekleme ve saatte 3 mail sınırı vardır. Belirsiz SMTP sonucunda otomatik yeniden gönderim yapılmaz; loglarda adres, şifre veya ham sıfırlama kodu yoktur.
+
+`POST /api/v1/auth/reset-password` (`token`, `password`) 256 bit rastgele kodun SHA-256 özeti üzerinden çalışır; yalnızca özet, kullanıcı bağlantısı ve 30 dakikalık süre veritabanında saklanır. Ham kod yalnızca SMTP gönderimi sırasında bellektedir. Bağlantının origin'i sabit `https://pereme.com.tr` olur; istemciden redirect URL alınmaz. Başarılı sıfırlama tek veritabanı transaction'ında şifre hash'ini ve `AuthenticationStamp` değerini değiştirir, kullanıcıya ait tüm eski bağlantıları tüketir; rolü değiştirmez. Yeni stamp kontrolü eski JWT oturumlarını reddeder. Önceden oluşturulmuş hesapların nullable stamp alanı, ilk sıfırlamaya kadar mevcut oturumları korur. Migration yalnızca nullable kullanıcı sütunu ve `PasswordResetTokens` tablosu ekler; mevcut rezervasyonları değiştirmez. Sıfırlama gönderimi IP başına 15 dakikada 15 denemeyle sınırlıdır.
+
 ```powershell
 aws login
 .\scripts\deploy-infrastructure.ps1

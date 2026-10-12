@@ -84,12 +84,14 @@ builder.Services
                 var currentUser = await dbContext.Users
                     .AsNoTracking()
                     .Where(user => user.Id == userId)
-                    .Select(user => new { user.IsActive, user.Role })
+                    .Select(user => new { user.IsActive, user.Role, user.AuthenticationStamp })
                     .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
                 if (
                     currentUser is null
                     || !currentUser.IsActive
                     || currentUser.Role != tokenRole
+                    || (currentUser.AuthenticationStamp is { } stamp
+                        && context.Principal?.FindFirstValue("auth_stamp") != stamp.ToString("N"))
                 )
                 {
                     context.Fail("User access has changed or is disabled.");
@@ -101,6 +103,22 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("password-reset-request", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5, Window = TimeSpan.FromMinutes(15), QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+    options.AddPolicy("password-reset-submit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 15, Window = TimeSpan.FromMinutes(15), QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
     options.AddPolicy("tour-quote", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
