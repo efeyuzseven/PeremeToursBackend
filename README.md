@@ -56,6 +56,12 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
 
+Kullanıcı yönetimi: `PATCH /api/v1/admin/users/{id}` ad (`firstName`, zorunlu olduğunda 1–100 karakter), soyad (`lastName`, en fazla 100 karakter) ve e-posta (`email`, en fazla 320 karakter) alanlarını kısmi olarak günceller; mevcut `role` / `isActive` alanları korunur. Atlanan veya `null` alan değişmez; boş soyad temizlenir. Ad/soyad kırpılır ve e-posta küçük harfe normalleştirilir. Aktif olmayan hesaplar dahil aynı e-posta başka hesapta kullanılıyorsa `409 USER_EMAIL_ALREADY_EXISTS` döner. Liste ve güncelleme yanıtları `no-store` kullanır; parola/kimlik doğrulama damgası DTO'ya eklenmez.
+
+Ad/soyad değişikliği oturumları etkilemez. E-posta, rol veya aktiflik gerçekten değişirse kimlik doğrulama damgası yenilenir, eski JWT'ler ve kullanılmamış şifre sıfırlama bağlantıları geçersizleşir; parola değişmez. Rezervasyon sahipliği `UserId` ile korunur, geçmiş biletlerin iletişim/yolcu/ödeme bilgileri yeniden yazılmaz. Yönetici kendini pasifleştiremez veya kendi rolünü düşüremez. Aktörün güncel yetkisi ve değişiklikler aynı Serializable işlemde doğrulanır; PostgreSQL eşzamanlılık çakışması `409 USER_UPDATE_CONFLICT` döner, otomatik tekrar edilmez.
+
+`DeploymentBootstrap:AdminEmail` ile tanımlanan başlangıç yöneticisinin e-postası panelden değiştirilemez (`USER_EMAIL_PROTECTED`); ad/soyadı düzenlenebilir. Liste bu hesap için `canEditEmail: false` döndürür. Böylece sonraki bootstrap çalışmasının eski adresle ikinci yönetici hesabı oluşturması önlenir. Diğer yönetici kendi e-postasını değiştirdiğinde panel oturumu kapanır ve yeni adres/mevcut parola ile giriş istenir. Ek tablo veya migration gerekmez.
+
 Tur kataloğu EasyTicket servisinden alınır ve yalnızca Boğaz Turu, Türk Gecesi Dinner Cruise, Sunset ve DayTime kategorileri yayınlanır. API anahtarı backend yapılandırmasındaki `EasyTicket:ApiKey` alanından okunur; frontend'e gönderilmez.
 
 Fiyatlar ve bilet tipleri availability uçlarında EasyTicket'tan önbelleksiz alınır; İngilizce bilet tipi adları ve tur bilet notları da döndürülür. `tours/quote`, tur/kalkış/sefer/tarih ve `{ externalPriceId, quantity }` listesini alır. Seferi İstanbul saatine göre, bilet tiplerini ve toplam 1–12 misafir sınırını doğrular; toplamı güncel API fiyatlarıyla sunucuda hesaplar. Bu uç kişisel bilgi almaz, rezervasyon veya bilet oluşturmaz ve kontenjan ayırmaz.

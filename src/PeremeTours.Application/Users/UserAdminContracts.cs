@@ -7,12 +7,16 @@ public sealed record UserSummary(
     string? LastName,
     string Role,
     bool IsActive,
-    DateTimeOffset CreatedAtUtc
+    DateTimeOffset CreatedAtUtc,
+    bool CanEditEmail = true
 );
 
 public sealed record UpdateUserCommand(
     string? Role,
-    bool? IsActive
+    bool? IsActive,
+    string? FirstName = null,
+    string? LastName = null,
+    string? Email = null
 );
 
 public enum UpdateUserStatus
@@ -21,6 +25,11 @@ public enum UpdateUserStatus
     NotFound,
     InvalidRole,
     SelfLockout,
+    InvalidProfile,
+    EmailAlreadyExists,
+    EmailChangeProtected,
+    Forbidden,
+    Conflict,
 }
 
 public interface IUserAdminService
