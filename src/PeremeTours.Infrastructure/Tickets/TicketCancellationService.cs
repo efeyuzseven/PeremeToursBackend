@@ -27,6 +27,7 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
         await using (var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken))
         {
             ticket = await db.TourTickets.Include(item => item.Passengers).Include(item => item.Cancellation)
+                .Include(item => item.CancellationEmail)
                 .SingleOrDefaultAsync(item => item.Id == ticketId, cancellationToken);
             if (ticket is null) return null;
             if (command.TicketCode != ticket.TicketCode || command.ExpectedAmount != ticket.Amount)
@@ -106,6 +107,17 @@ internal sealed class TicketCancellationService(PeremeToursDbContext db, IBankCa
             ticket.PaymentFailureCode = null;
             ticket.PaymentFailureMessage = null;
             record.CompletedAtUtc = clock.GetUtcNow().UtcDateTime;
+            // Persist once, in the SAME transaction as the bank-approved cancellation.
+            // SMTP is independent and must never trigger another bank/provider operation.
+            if (ticket.CancellationEmail is null)
+            {
+                ticket.CancellationEmail = new CancellationEmail
+                {
+                    TicketId = ticket.Id, Ticket = ticket, Status = PaymentEmailStatus.Queued,
+                    CreatedAtUtc = record.CompletedAtUtc.Value, NextAttemptAtUtc = record.CompletedAtUtc.Value,
+                };
+                db.CancellationEmails.Add(ticket.CancellationEmail);
+            }
             // Commit the bank result AND provider outbox together. The browser never
             // waits for EasyTicket and its failure cannot undo a confirmed refund.
             if (record.ProviderCancelledAtUtc.HasValue)

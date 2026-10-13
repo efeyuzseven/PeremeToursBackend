@@ -16,6 +16,7 @@ public sealed class PeremeToursDbContext(DbContextOptions<PeremeToursDbContext> 
     public DbSet<TourTicket> TourTickets => Set<TourTicket>();
 
     public DbSet<PaymentEmail> PaymentEmails => Set<PaymentEmail>();
+    public DbSet<CancellationEmail> CancellationEmails => Set<CancellationEmail>();
     public DbSet<ReservationNotification> ReservationNotifications => Set<ReservationNotification>();
     public DbSet<TicketCancellation> TicketCancellations => Set<TicketCancellation>();
 

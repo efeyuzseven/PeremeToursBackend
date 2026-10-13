@@ -133,6 +133,49 @@ public sealed class AccountAndCancellationTests : IDisposable
         var request = new HttpRequestMessage(HttpMethod.Get, path); request.Headers.Add("X-Test-User", user.ToString()); request.Headers.Add("X-Test-Role", role);
         return _client.SendAsync(request);
     }
+
+    [Fact]
+    public async Task AdminTicketListSeparatesPurchaseAndCancellationEmailStatuses()
+    {
+        SeedCancellationMail();
+        using var response = await GetAsync("/api/v1/admin/tickets", _admin, "Admin");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var ticket = body.RootElement.EnumerateArray().Single(item => item.GetProperty("ticketCode").GetString() == "PRM-OWN");
+        Assert.Equal("Sent", ticket.GetProperty("emailStatus").GetString());
+        Assert.Equal("Queued", ticket.GetProperty("cancellationEmailStatus").GetString());
+        Assert.Equal("Completed", ticket.GetProperty("cancellationStatus").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, ticket.GetProperty("cancellationEmailSentAtUtc").ValueKind);
+    }
+
+    [Fact]
+    public async Task CancellationMailDetailsRemainOwnedAndNeverRestoreCancelledQrCodes()
+    {
+        SeedCancellationMail();
+        using var response = await GetAsync("/api/v1/account/reservations", _owner, "User");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var text = await response.Content.ReadAsStringAsync();
+        using var body = System.Text.Json.JsonDocument.Parse(text);
+        Assert.Equal("Queued", body.RootElement[0].GetProperty("cancellationEmailStatus").GetString());
+        Assert.DoesNotContain("22222222-2222-4222-8222-222222222222", text, StringComparison.Ordinal);
+        using var other = await GetAsync("/api/v1/account/reservations", _other, "User");
+        Assert.DoesNotContain("PRM-OWN", await other.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    private void SeedCancellationMail()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PeremeToursDbContext>();
+        var ticket = db.TourTickets.Single(item => item.Id == _ticketId);
+        ticket.Status = TicketStatus.Cancelled; ticket.PaymentStatus = TicketPaymentStatus.Refunded;
+        db.TicketCancellations.Add(new TicketCancellation { TicketId = ticket.Id, ActorUserId = _admin, Reason = "Fixture", Amount = ticket.Amount,
+            Status = TicketCancellationStatus.Completed, RequestedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow, CompletedAtUtc = DateTime.UtcNow });
+        db.PaymentEmails.Add(new PaymentEmail { TicketId = ticket.Id, Status = PaymentEmailStatus.Sent, SentAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = DateTime.UtcNow, NextAttemptAtUtc = DateTime.UtcNow });
+        db.CancellationEmails.Add(new CancellationEmail { TicketId = ticket.Id, Status = PaymentEmailStatus.Queued,
+            CreatedAtUtc = DateTime.UtcNow, NextAttemptAtUtc = DateTime.UtcNow });
+        db.SaveChanges();
+    }
     private static UserAccount Person(Guid id, string role, bool active = true) => new() { Id = id, Email = $"{id}@example.test",
         NormalizedEmail = $"{id}@EXAMPLE.TEST", FirstName = "Demo", PasswordHash = "not-a-real-password-hash", Role = role, IsActive = active, CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
     private static TourTicket Ticket(Guid id, Guid? owner, string code) => new() { Id = id, UserId = owner, TicketCode = code,

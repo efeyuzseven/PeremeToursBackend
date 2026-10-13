@@ -17,6 +17,7 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             .AsNoTracking()
             .Include(ticket => ticket.PaymentEmail)
             .Include(ticket => ticket.Cancellation)
+            .Include(ticket => ticket.CancellationEmail)
             .OrderByDescending(ticket => ticket.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         return tickets.Select(Map).ToList();
@@ -162,7 +163,9 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             ticket.Cancellation?.CanResumeBankCancellation() == true && ticket.Status == TicketStatus.Confirmed
                 && ticket.PaymentStatus == TicketPaymentStatus.Paid && ticket.TicketingStatus == TicketingStatus.Issued
                 && ticket.PaymentProvider == "Ziraat" && ticket.Currency == "TRY" && ticket.Amount == ticket.Cancellation.Amount
-                && Guid.TryParse(ticket.ExternalVoucherGuid, out _)
+                && Guid.TryParse(ticket.ExternalVoucherGuid, out _),
+            ticket.CancellationEmail?.Status,
+            ticket.CancellationEmail?.SentAtUtc
         );
 
     private static string CreateTicketCode(DateTimeOffset now) =>

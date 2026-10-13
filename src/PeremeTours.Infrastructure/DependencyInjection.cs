@@ -85,6 +85,9 @@ public static class DependencyInjection
         services.AddScoped<IPaymentEmailSender, SmtpPaymentEmailSender>();
         services.AddScoped<PaymentEmailProcessor>();
         services.AddHostedService<PaymentEmailWorker>();
+        services.AddScoped<ICancellationEmailSender, SmtpPaymentEmailSender>();
+        services.AddScoped<CancellationEmailProcessor>();
+        services.AddHostedService<CancellationEmailWorker>();
         services.AddScoped<IReservationNotificationSender, SmtpPaymentEmailSender>();
         services.AddScoped<ReservationNotificationProcessor>();
         services.AddHostedService<ReservationNotificationWorker>();

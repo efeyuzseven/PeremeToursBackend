@@ -132,6 +132,45 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                     b.ToTable("TourPageImages", (string)null);
                 });
 
+            modelBuilder.Entity("PeremeTours.Domain.Tickets.CancellationEmail", b =>
+                {
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastFailureCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("LockToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("TicketId");
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("CancellationEmails", (string)null);
+                });
+
             modelBuilder.Entity("PeremeTours.Domain.Tickets.PaymentEmail", b =>
                 {
                     b.Property<Guid>("TicketId")
@@ -731,6 +770,17 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PeremeTours.Domain.Tickets.CancellationEmail", b =>
+                {
+                    b.HasOne("PeremeTours.Domain.Tickets.TourTicket", "Ticket")
+                        .WithOne("CancellationEmail")
+                        .HasForeignKey("PeremeTours.Domain.Tickets.CancellationEmail", "TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Ticket");
+                });
+
             modelBuilder.Entity("PeremeTours.Domain.Tickets.PaymentEmail", b =>
                 {
                     b.HasOne("PeremeTours.Domain.Tickets.TourTicket", "Ticket")
@@ -808,6 +858,8 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("PeremeTours.Domain.Tickets.TourTicket", b =>
                 {
                     b.Navigation("Cancellation");
+
+                    b.Navigation("CancellationEmail");
 
                     b.Navigation("Passengers");
 

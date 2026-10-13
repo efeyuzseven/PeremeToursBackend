@@ -18,6 +18,11 @@ internal interface IReservationNotificationSender
     Task SendAsync(ReservationNotification notification, CancellationToken cancellationToken);
 }
 
+internal interface ICancellationEmailSender
+{
+    Task SendAsync(CancellationEmail email, CancellationToken cancellationToken);
+}
+
 internal sealed class EmailDeliveryException(string code, string message, bool canRetry = false, bool isAmbiguous = false)
     : Exception(message)
 {
@@ -26,7 +31,7 @@ internal sealed class EmailDeliveryException(string code, string message, bool c
     public bool IsAmbiguous { get; } = isAmbiguous;
 }
 
-internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender
+internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender, ICancellationEmailSender
 {
     private readonly MailOptions _options = options.Value;
 
@@ -64,6 +69,22 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
     public async Task SendAsync(ReservationNotification notification, CancellationToken cancellationToken)
     {
         await DeliverAsync(CreateReservationMessage(notification), cancellationToken);
+    }
+
+    public async Task SendAsync(CancellationEmail email, CancellationToken cancellationToken)
+    {
+        await DeliverAsync(CreateCancellationMessage(email), cancellationToken);
+    }
+
+    internal MimeMessage CreateCancellationMessage(CancellationEmail email)
+    {
+        var content = CancellationEmailTemplate.Render(email.Ticket);
+        var sender = GetSender();
+        if (!MailboxAddress.TryParse(email.Ticket.CustomerEmail, out var recipient))
+            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "Invalid cancellation email recipient.");
+        var message = CreateMessage(email.Ticket, recipient, sender, content, $"pereme-cancellation-{email.TicketId:N}");
+        message.Date = new DateTimeOffset(DateTime.SpecifyKind(email.Ticket.Cancellation!.CompletedAtUtc!.Value, DateTimeKind.Utc));
+        return message;
     }
 
     internal MimeMessage CreateCustomerMessage(TourTicket ticket)

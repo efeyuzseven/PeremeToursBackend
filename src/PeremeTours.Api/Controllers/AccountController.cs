@@ -32,6 +32,7 @@ public sealed class AccountController(PeremeToursDbContext db) : ControllerBase
         // Never infer ownership from contact email: registration currently has no email verification.
         var reservations = await db.TourTickets.AsNoTracking().Where(item => item.UserId == userId)
             .Include(item => item.Passengers).Include(item => item.PaymentEmail).Include(item => item.Cancellation)
+            .Include(item => item.CancellationEmail)
             .OrderByDescending(item => item.CreatedAtUtc).ToListAsync(cancellationToken);
         return Ok(reservations.Select(item => new AccountReservation(item.Id, item.TicketCode,
             item.TourName, item.TourDate, item.DepartureTime, item.DeparturePortName, item.GuestCount,
@@ -40,7 +41,8 @@ public sealed class AccountController(PeremeToursDbContext db) : ControllerBase
             item.Passengers.OrderBy(passenger => passenger.Sequence).Select(passenger =>
                 new AccountPassenger(passenger.Sequence + 1, passenger.FirstName + " " + passenger.LastName,
                     passenger.Pnr, item.Cancellation is null && item.Status == TicketStatus.Confirmed && item.PaymentStatus == TicketPaymentStatus.Paid
-                        && item.TicketingStatus == TicketingStatus.Issued ? passenger.ExternalTicketGuid : null)).ToArray())).ToArray());
+                        && item.TicketingStatus == TicketingStatus.Issued ? passenger.ExternalTicketGuid : null)).ToArray(),
+            item.CancellationEmail?.Status.ToString(), item.CancellationEmail?.SentAtUtc)).ToArray());
     }
 }
 
@@ -48,4 +50,5 @@ public sealed record AccountProfile(string FirstName, string? LastName, string E
 public sealed record AccountPassenger(int Number, string Name, string? Pnr, string? TicketGuid);
 public sealed record AccountReservation(Guid Id, string TicketCode, string TourName, DateOnly TourDate,
     TimeOnly DepartureTime, string DeparturePort, int GuestCount, decimal Amount, string Currency,
-    string Status, string PaymentStatus, string TicketingStatus, string? EmailStatus, string? CancellationStatus, IReadOnlyList<AccountPassenger> Passengers);
+    string Status, string PaymentStatus, string TicketingStatus, string? EmailStatus, string? CancellationStatus, IReadOnlyList<AccountPassenger> Passengers,
+    string? CancellationEmailStatus = null, DateTime? CancellationEmailSentAtUtc = null);

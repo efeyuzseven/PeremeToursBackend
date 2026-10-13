@@ -48,6 +48,9 @@ public sealed class TicketCancellationTests : IDisposable
         Assert.Equal(350, (await _db.TicketCancellations.SingleAsync()).Amount);
         Assert.Equal(_actor, (await _db.TicketCancellations.SingleAsync()).ActorUserId);
         Assert.Equal(ProviderCancellationStatus.Queued, (await _db.TicketCancellations.SingleAsync()).ProviderStatus);
+        var email = await _db.CancellationEmails.SingleAsync();
+        Assert.Equal(PaymentEmailStatus.Queued, email.Status);
+        Assert.Equal((await _db.TicketCancellations.SingleAsync()).CompletedAtUtc, email.CreatedAtUtc);
         _db.ChangeTracker.Clear();
         Assert.True(await Processor(_db).ProcessNextAsync(CancellationToken.None));
         Assert.Equal("check,reverse,provider", string.Join(',', _events));
@@ -61,6 +64,7 @@ public sealed class TicketCancellationTests : IDisposable
         using var second = Context();
         Assert.Equal("Completed", (await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None))!.Status);
         Assert.Equal(1, _bank.Reversals); Assert.Equal(0, _provider.Calls); Assert.Equal(1, _bank.Checks);
+        Assert.Single(await _db.CancellationEmails.ToListAsync());
     }
 
     [Fact]
@@ -87,6 +91,7 @@ public sealed class TicketCancellationTests : IDisposable
         await Service(second).CancelAsync(_ticket.Id, _actor, Command(), CancellationToken.None);
         Assert.Equal(providerCalls, _provider.Calls); Assert.Equal(reverseCalls, _bank.Reversals);
         Assert.Equal(TicketPaymentStatus.Paid, (await _db.TourTickets.SingleAsync()).PaymentStatus);
+        Assert.Empty(await _db.CancellationEmails.ToListAsync());
         Assert.Equal(expectedStatus, (await _db.TourTickets.SingleAsync()).Status);
         Assert.Equal(TicketErrorStage.Cancellation, (await _db.TicketErrorRecords.SingleAsync()).Stage);
     }

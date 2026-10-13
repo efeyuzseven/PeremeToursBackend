@@ -27,7 +27,9 @@ public sealed record TicketSummary(
     string? CancellationStatus = null,
     string? CancellationFailureCode = null,
     bool CanCancel = false,
-    bool CanRetryCancellation = false
+    bool CanRetryCancellation = false,
+    PaymentEmailStatus? CancellationEmailStatus = null,
+    DateTime? CancellationEmailSentAtUtc = null
 );
 
 public sealed record CreateTicketCommand(

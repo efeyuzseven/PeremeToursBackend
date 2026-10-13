@@ -33,7 +33,9 @@ internal sealed class TicketErrorService(PeremeToursDbContext db, IOptions<MailO
                 item.Ticket.TourName, item.Ticket.TourDate, item.Ticket.Amount, item.Ticket.Currency,
                 item.Stage, item.Code, item.ProviderCode, item.Message, item.IsHistorical, item.CreatedAtUtc,
                 item.Ticket.PaymentStatus, item.Ticket.TicketingStatus,
-                item.Ticket.PaymentEmail == null ? null : (PaymentEmailStatus?)item.Ticket.PaymentEmail.Status))
+                item.Code.StartsWith("CANCELLATION_EMAIL_")
+                    ? item.Ticket.CancellationEmail == null ? null : (PaymentEmailStatus?)item.Ticket.CancellationEmail.Status
+                    : item.Ticket.PaymentEmail == null ? null : (PaymentEmailStatus?)item.Ticket.PaymentEmail.Status))
             .ToListAsync(cancellationToken);
         return new TicketErrorPage(items, total, page, pageSize, mailOptions?.Value.Enabled ?? false);
     }

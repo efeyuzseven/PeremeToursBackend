@@ -253,6 +253,16 @@ Testler taklit sağlayıcılarla çalışır; gerçek rezervasyon iptal ederek t
 
 ## Ödeme e-postası ve hata kayıtları
 
+### İptal / iade bildirimi
+
+Yeni banka onaylı iptal/iadelerde (`TicketCancellations.Completed`, `Cancelled` + `Refunded`) tekil `CancellationEmails` kaydı aynı veritabanı commit'inde oluşturulur. Mevcut Dentur SMTP hesabıyla rezervasyonun **iletişim e-posta adresine**, TR/EN modern HTML ve düz metin bildirim gider; üyelik adresiyle eşleştirme ve operasyon adreslerine CC/BCC yoktur. Dentur Avrasya'daki gibi mail banka onayından sonra tetiklenir, EasyTicket arka plan kontrolünün bitmesini beklemez. `Void` için ödeme iptali, `Credit` için banka onaylı iade açıklanır; paranın karta kesin yansıdığı, belirli gün sayısı veya EasyTicket iptalinin doğrulandığı iddia edilmez. Mailde rezervasyon, tur, tarih, kişi ve tutar özeti bulunur; kart/kimlik/pasaport/PNR/QR/voucher yer almaz.
+
+Üç dakikalık atomik lease ve sahipliğe bağlı sonuç kaydıyla tek gönderim işleyicisi seçilir. 90 saniyelik SMTP zaman aşımı ve en fazla dört güvenli geçici-hata denemesi vardır; belirsiz gönderim veya işleyici çökmesinde otomatik tekrar yoktur. Mail başarısızlığı banka/bilet statüsünü değiştirmez ve hiçbir banka ya da EasyTicket işlemini tekrarlamaz. `CANCELLATION_EMAIL_*` hata kodları `Email` aşamasında panelden takip edilir. Panel ve kullanıcı hesabı, satın alma mailinden ayrı `cancellationEmailStatus` / `cancellationEmailSentAtUtc` alanlarını gösterir.
+
+Migration yalnızca boş gönderim tablosu oluşturur; geçmiş iptaller geriye dönük kuyruğa alınmaz veya toplu bildirilmez. Eski iptale bildirim için ayrıca açık talep gerekir. Mevcut POS/SMTP bilgileri ve SMTP güvenlik modu korunur. Kontrollerde gerçek iptal/iade başlatılmaz.
+
+### Satın alma bildirimi
+
 `Paid` durumu ile tekil `PaymentEmails` kaydı aynı veritabanı işlemiyle kaydedilir.
 ECS içindeki arka plan işleyicisi rezervasyonun **iletişim e-posta adresine**
 Türkçe/İngilizce, mobil uyumlu HTML ve düz metin gönderir. SMTP kesintisi banka
