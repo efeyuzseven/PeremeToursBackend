@@ -18,4 +18,5 @@ public sealed class MailOptions
     public string ReservationRecipient { get; set; } = "reservation@pereme.com.tr";
     public string BosphorusRecipient { get; set; } = "mcanerdinc@denturavrasya.com";
     public string SunsetDaytimeRecipient { get; set; } = "omacit@pereme.com.tr";
+    public string[] ContactRecipients { get; set; } = ["eyilmaz@denturavrasya.com", "uakseloglu@denturavrasya.com"];
 }

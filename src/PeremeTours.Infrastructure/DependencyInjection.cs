@@ -91,6 +91,10 @@ public static class DependencyInjection
         services.AddScoped<IReservationNotificationSender, SmtpPaymentEmailSender>();
         services.AddScoped<ReservationNotificationProcessor>();
         services.AddHostedService<ReservationNotificationWorker>();
+        services.AddScoped<IContactEmailSender, SmtpPaymentEmailSender>();
+        services.AddScoped<ContactEmailProcessor>();
+        services.AddHostedService<ContactEmailWorker>();
+        services.AddScoped<IContactRequestService, ContactRequestService>();
         services.AddSingleton<ThreeDSecureFrameStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITourBookingService, TourBookingService>();
@@ -128,6 +132,7 @@ public static class DependencyInjection
         });
         services.AddScoped<ITourContentService, TourContentService>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
+        services.AddScoped<IHomepageImageService, HomepageImageService>();
         services.AddScoped<ITourPageService, TourPageService>();
         services.AddScoped<ITourPageImageStorage, S3TourImageStorage>();
         services.AddScoped<

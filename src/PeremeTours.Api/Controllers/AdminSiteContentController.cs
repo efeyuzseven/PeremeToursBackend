@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Text.RegularExpressions;
 using PeremeTours.Application.Content;
 using PeremeTours.Application.Tours;
 using PeremeTours.Domain.Users;
@@ -10,7 +12,7 @@ namespace PeremeTours.Api.Controllers;
 [Authorize(Roles = UserRoles.Admin)]
 [Route("api/v1/admin/site-content")]
 public sealed class AdminSiteContentController(
-    IHomepageContentService homepageContentService
+    IHomepageContentService homepageContentService, IHomepageImageService images
 ) : ControllerBase
 {
     private static readonly HashSet<string> SupportedCategories =
@@ -26,10 +28,31 @@ public sealed class AdminSiteContentController(
     [ProducesResponseType<HomepageContentDocument>(StatusCodes.Status200OK)]
     public async Task<ActionResult<HomepageContentDocument>> GetHomepage(
         CancellationToken cancellationToken
-    ) => Ok(await homepageContentService.GetAsync(cancellationToken));
+    )
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await homepageContentService.GetAsync(cancellationToken));
+    }
+
+    [HttpPost("homepage/images")]
+    [EnableRateLimiting("homepage-image")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(8 * 1024 * 1024 + 64 * 1024)]
+    public async Task<ActionResult<TourPageImageResult>> Upload([FromForm] TourImageUploadRequest request, CancellationToken cancellationToken)
+    {
+        var type = request.File.ContentType.ToLowerInvariant();
+        if (request.File.Length is <= 0 or > 8 * 1024 * 1024 || type is not ("image/jpeg" or "image/png" or "image/webp"))
+            return Problem(statusCode: 400, title: "Görsel JPG, PNG veya WebP formatında ve en fazla 8 MB olmalıdır.");
+        await using var buffer = new MemoryStream((int)request.File.Length);
+        await request.File.CopyToAsync(buffer, cancellationToken);
+        if (!AdminTourContentsController.HasValidSignature(buffer.ToArray(), type))
+            return Problem(statusCode: 400, title: "Dosya içeriği belirtilen görsel formatıyla eşleşmiyor.");
+        buffer.Position = 0;
+        return Ok(await images.UploadAsync(buffer, type, cancellationToken));
+    }
 
     [HttpPut("homepage")]
-    [RequestSizeLimit(128 * 1024)]
+    [RequestSizeLimit(2 * 1024 * 1024)]
     [ProducesResponseType<HomepageContentDocument>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(
         StatusCodes.Status400BadRequest
@@ -41,6 +64,16 @@ public sealed class AdminSiteContentController(
     {
         ValidateLanguage(request.Tr, "tr");
         ValidateLanguage(request.En, "en");
+        var imageKeys = new[] { "hero", "final", "storyMain", "storySmall", "turkish-night", "sunset", "daytime", "bosphorus" };
+        if (request.Images is { } uploaded && (uploaded.Count > 8 || uploaded.Any(item => !imageKeys.Contains(item.Key) || !IsImageUrl(item.Value))))
+            ModelState.AddModelError("images", "Görsel alanı veya bağlantısı geçersiz.");
+        if (request.ImagePositions is { } positions && (positions.Count > 8 || positions.Any(item => !imageKeys.Contains(item.Key)
+                || !new[] { "center", "top", "bottom", "left", "right" }.Contains(item.Value))))
+            ModelState.AddModelError("imagePositions", "Görsel odak noktası geçersiz.");
+        if (request.HiddenSections is { } hidden && (hidden.Count > 6 || hidden.Distinct().Count() != hidden.Count
+                || hidden.Any(item => !new[] { "marquee", "services", "why", "stories", "final", "heroCard" }.Contains(item))))
+            ModelState.AddModelError("hiddenSections", "Bölüm görünürlüğü geçersiz.");
+        if (request.InstagramUrls is null) return Problem(statusCode: 400, title: "Instagram bağlantıları eksik olamaz.");
         if (request.InstagramUrls.Count > 6)
         {
             ModelState.AddModelError(
@@ -76,6 +109,13 @@ public sealed class AdminSiteContentController(
         string fieldPrefix
     )
     {
+        if (content is null || content.Hero is null || content.Tours is null || content.Services?.Items is null
+            || content.Why?.Benefits is null || content.Stories is null || content.Final is null
+            || content.Services.Items.Any(item => item is null) || content.Why.Benefits.Any(item => item is null))
+        {
+            ModelState.AddModelError(fieldPrefix, "İçerik alanları eksik olamaz.");
+            return;
+        }
         if (
             content.Services.Items.Count != 4
             || content.Services.Items
@@ -100,13 +140,27 @@ public sealed class AdminSiteContentController(
             );
         }
 
-        if (EnumerateText(content).Any(text => text.Length > 3000))
+        if (content.Texts is { } texts && (texts.Count > 100 || texts.Any(item => item.Value is null || item.Value.Length > 3000
+                || !Regex.IsMatch(item.Key, "^[a-zA-Z][a-zA-Z0-9.]{0,79}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50)))))
+            ModelState.AddModelError($"{fieldPrefix}.texts", "Ek metin alanı geçersiz veya 3000 karakterden uzun.");
+
+        if (EnumerateText(content).Any(text => text is null || text.Length > 3000))
         {
             ModelState.AddModelError(
                 fieldPrefix,
                 "Tek bir içerik alanı 3000 karakterden uzun olamaz."
             );
         }
+    }
+
+    private static bool IsImageUrl(string? value)
+    {
+        if (value == "") return true; // Explicit reset to the current design default.
+        if (value is not { Length: > 0 and <= 2000 } || value.Contains('\\') || value.Any(char.IsControl)
+            || value.Contains('%') || value.Contains("..", StringComparison.Ordinal) || value.Contains('?') || value.Contains('#')) return false;
+        return Regex.IsMatch(value, "^/assets/[a-zA-Z0-9_/-]+\\.(jpg|jpeg|png|webp)$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50))
+            || value.StartsWith("/api/v1/site-content/homepage/images/", StringComparison.Ordinal)
+                && Guid.TryParse(value["/api/v1/site-content/homepage/images/".Length..], out _);
     }
 
     private static IEnumerable<string> EnumerateText(
@@ -153,7 +207,7 @@ public sealed class AdminSiteContentController(
 
     private static bool IsInstagramUrl(string value)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        if (value is not { Length: > 0 and <= 2000 } || !Uri.TryCreate(value, UriKind.Absolute, out var uri))
         {
             return false;
         }

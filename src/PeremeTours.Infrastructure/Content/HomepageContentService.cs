@@ -35,6 +35,16 @@ internal sealed class HomepageContentService(
         CancellationToken cancellationToken
     )
     {
+        // Older editor versions must not erase newly introduced settings on save.
+        var previous = await GetAsync(cancellationToken);
+        document = document with
+        {
+            Images = document.Images ?? previous.Images,
+            ImagePositions = document.ImagePositions ?? previous.ImagePositions,
+            HiddenSections = document.HiddenSections ?? previous.HiddenSections,
+            Tr = document.Tr with { Texts = document.Tr.Texts ?? previous.Tr.Texts },
+            En = document.En with { Texts = document.En.Texts ?? previous.En.Texts },
+        };
         var content = await dbContext.HomepageContents.FindAsync(
             [HomepageContent.SingletonId],
             cancellationToken

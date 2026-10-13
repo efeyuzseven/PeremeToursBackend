@@ -3,7 +3,10 @@ namespace PeremeTours.Application.Content;
 public sealed record HomepageContentDocument(
     HomepageLanguageContent Tr,
     HomepageLanguageContent En,
-    IReadOnlyList<string> InstagramUrls
+    IReadOnlyList<string> InstagramUrls,
+    IReadOnlyDictionary<string, string>? Images = null,
+    IReadOnlyDictionary<string, string>? ImagePositions = null,
+    IReadOnlyList<string>? HiddenSections = null
 );
 
 public sealed record HomepageLanguageContent(
@@ -12,7 +15,8 @@ public sealed record HomepageLanguageContent(
     HomepageServicesContent Services,
     HomepageWhyContent Why,
     HomepageStoriesContent Stories,
-    HomepageFinalContent Final
+    HomepageFinalContent Final,
+    IReadOnlyDictionary<string, string>? Texts = null
 );
 
 public sealed record HomepageHeroContent(
@@ -79,4 +83,10 @@ public interface IHomepageContentService
         HomepageContentDocument document,
         CancellationToken cancellationToken
     );
+}
+
+public interface IHomepageImageService
+{
+    Task<TourPageImageResult> UploadAsync(Stream content, string contentType, CancellationToken cancellationToken);
+    Task<PeremeTours.Application.Tours.TourImageFile?> GetAsync(Guid id, CancellationToken cancellationToken);
 }

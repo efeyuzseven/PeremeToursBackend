@@ -3,6 +3,8 @@ using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
+using System.Net;
+using PeremeTours.Domain.Content;
 using PeremeTours.Domain.Tickets;
 using PeremeTours.Infrastructure.Authentication;
 
@@ -31,9 +33,42 @@ internal sealed class EmailDeliveryException(string code, string message, bool c
     public bool IsAmbiguous { get; } = isAmbiguous;
 }
 
-internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender, ICancellationEmailSender
+internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender, ICancellationEmailSender, IContactEmailSender
 {
     private readonly MailOptions _options = options.Value;
+
+    public Task SendAsync(ContactEmail email, CancellationToken cancellationToken) => DeliverAsync(CreateContactMessage(email), cancellationToken);
+
+    internal MimeMessage CreateContactMessage(ContactEmail email)
+    {
+        var sender = GetSender();
+        if (!_options.ContactRecipients.Any(item => item.Trim().Equals(email.RecipientEmail, StringComparison.OrdinalIgnoreCase))
+            || !MailboxAddress.TryParse(email.RecipientEmail, out var recipient)
+            || !MailboxAddress.TryParse(email.Request.Email, out var replyTo)
+            || !replyTo.Address.Equals(email.Request.Email, StringComparison.OrdinalIgnoreCase))
+            throw new EmailDeliveryException("CONTACT_RECIPIENT_INVALID", "Contact notification recipient is invalid.");
+        var contact = email.Request;
+        string Encode(string value) => WebUtility.HtmlEncode(value);
+        var text = $"Dentur | Pereme Tours — Yeni iletişim talebi\nTalep: {contact.Id}\nAd soyad: {contact.Name}\nE-posta: {contact.Email}\nDil: {contact.Language}\nKonu: {contact.Topic}\n\n{contact.Message}\n\nYanıtla ile müşteriye doğrudan yanıt verebilirsiniz.";
+        var html = $"""
+            <!doctype html><html lang="tr"><body style="margin:0;background:#edf3fa;font-family:Arial,sans-serif;color:#071b35">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
+            <table role="presentation" width="100%" style="max-width:600px;background:white;border-radius:20px;overflow:hidden" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:28px;background:#1f478c;color:white;font-size:20px;font-weight:bold">DENTUR | PEREME TOURS</td></tr>
+            <tr><td style="padding:30px"><p style="color:#6a9dd2;font-size:12px;letter-spacing:2px">İLETİŞİM TALEBİ</p>
+            <h1 style="font-size:26px">Yeni bir mesajınız var.</h1><h2 style="font-size:18px">{Encode(contact.Topic)}</h2>
+            <p><b>Ad soyad:</b> {Encode(contact.Name)}<br><b>E-posta:</b> {Encode(contact.Email)}<br><b>Dil:</b> {Encode(contact.Language.ToUpperInvariant())}</p>
+            <div style="background:#f2f6fc;border-radius:12px;padding:20px;line-height:1.7;overflow-wrap:anywhere">{Encode(contact.Message).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "<br>", StringComparison.Ordinal)}</div>
+            <p style="font-size:12px;color:#1f478c">E-postayı yanıtlayarak müşteriye doğrudan ulaşabilirsiniz.</p>
+            <p style="font-size:11px;color:#6a9dd2">Talep: {contact.Id}<br>Bu bildirim pereme.com.tr iletişim formundan oluşturulmuştur.</p>
+            </td></tr></table></td></tr></table></body></html>
+            """;
+        var message = new MimeMessage { Subject = "Dentur | Pereme Tours — Yeni iletişim talebi", Date = contact.CreatedAtUtc,
+            MessageId = $"pereme-contact-{email.Id:N}@{sender.Domain}", Body = new BodyBuilder { HtmlBody = html, TextBody = text }.ToMessageBody() };
+        message.From.Add(new MailboxAddress(_options.SenderName, sender.Address));
+        message.To.Add(recipient); message.ReplyTo.Add(replyTo);
+        return message;
+    }
 
     public async Task SendAsync(string email, string token, string language, CancellationToken cancellationToken)
     {
