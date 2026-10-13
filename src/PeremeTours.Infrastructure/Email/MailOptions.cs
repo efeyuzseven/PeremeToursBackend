@@ -16,5 +16,6 @@ public sealed class MailOptions
     public string SenderName { get; set; } = "Dentur Pereme";
     public string WebsiteUrl { get; set; } = "https://pereme.com.tr";
     public string ReservationRecipient { get; set; } = "reservation@pereme.com.tr";
+    public string BosphorusRecipient { get; set; } = "mcanerdinc@denturavrasya.com";
     public string SunsetDaytimeRecipient { get; set; } = "omacit@pereme.com.tr";
 }

@@ -277,10 +277,13 @@ doğrulanmadıysa e-postada yalnızca ödeme alındığı ve biletlerin kontrol 
 PNR sadece `Issued` durumda gösterilir; kimlik, pasaport, doğum tarihi, kart ve CVC mailde yer almaz.
 
 Yeni başarılı bilet kesimleri ayrıca bağımsız `ReservationNotifications` kuyruğuna alınır:
-`reservation@pereme.com.tr` tüm turları; `omacit@pereme.com.tr` yalnızca doğrulanmış
-`sunset` ve `daytime` kategorilerini alır. Kategori ve bilet tipi ödeme başlangıcındaki
+`reservation@pereme.com.tr` yalnızca `turkish-night` (Türk Gecesi),
+`mcanerdinc@denturavrasya.com` yalnızca `bosphorus` (Boğaz Turu),
+`omacit@pereme.com.tr` ise `sunset` ve `daytime` kategorilerini alır.
+Bilinmeyen veya boş kategori iç bildirim oluşturmaz; tur adına bakarak alıcı tahmin edilmez.
+Kategori ve bilet tipi ödeme başlangıcındaki
 güncel sunucu fiyat sorgusundan saklanır; düzenlenebilir tur adına göre yönlendirme yapılmaz.
-Alıcılar `MailSettings:ReservationRecipient` ve `MailSettings:SunsetDaytimeRecipient`
+Alıcılar sırasıyla `MailSettings:ReservationRecipient`, `MailSettings:BosphorusRecipient` ve `MailSettings:SunsetDaytimeRecipient`
 ile ayarlanır. Her alıcıya ayrı HTML/düz metin maili gönderilir; müşteri mailine CC/BCC eklenmez.
 İç bildirimde rezervasyon, tur, kalkış, kişi sayısı, iletişim, bilet tipi, PNR ve tutar özeti bulunur;
 yolcu kimliği, pasaport, doğum tarihi ve kart bilgileri bulunmaz. Alıcı başına tekil outbox,
@@ -288,7 +291,10 @@ atomik worker sahiplenmesi, sınırlı güvenli tekrar ve belirsiz gönderimde o
 kuralları geçerlidir. İç mail hataları admin bilet hata kayıtlarında `Email` aşamasında
 `RESERVATION_*` kodlarıyla görünür; müşteri mailinin durumunu, ödemeyi veya bilet kesimini değiştirmez.
 Eski satın alımlar geriye dönük bildirilmez; iptal talebi başlamış rezervasyonların bekleyen
-iç bildirimleri gönderilmeden atlanır. SMTP güvenlik ayarı ve ortak Dentur gönderici hesabı korunur.
+iç bildirimleri gönderilmeden atlanır. Gönderim öncesinde kategori/alıcı eşleşmesi tekrar doğrulanır;
+eski yönlendirmeye göre yanlış alıcıda bekleyen kayıtlar `Skipped / RECIPIENT_CHANGED` olur.
+Bu kayıtlar başka adrese taşınmaz, yeni mail oluşturulmaz; geçmiş gönderilmiş/başarısız/incelemedeki kayıtlar korunur.
+Müşteri satın alma/iptal/şifre sıfırlama mailleri, SMTP güvenlik ayarı ve ortak Dentur gönderici hesabı korunur.
 
 `MailSettings` ayarları kullanılır. AWS, Dentur Avrasya ile aynı gönderici hesabını
 ve mevcut `/dentur/avrasya/SMTP_PASSWORD` SSM SecureString kaydını referans alır;

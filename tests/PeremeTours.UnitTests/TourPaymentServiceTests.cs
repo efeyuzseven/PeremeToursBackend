@@ -139,8 +139,16 @@ public sealed class TourPaymentServiceTests : IDisposable
     {
         var command = Command(); var start = await _service.StartAsync(command, CancellationToken.None);
         await _service.CompleteAsync(Callback(start), CancellationToken.None);
-        _db.TicketCancellations.Add(new TicketCancellation { TicketId = start.TicketId, ActorUserId = Guid.NewGuid(), Reason = "Test", Amount = start.Amount,
-            Status = TicketCancellationStatus.ReviewRequired, RequestedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow });
+        _db.TicketCancellations.Add(new TicketCancellation
+        {
+            TicketId = start.TicketId,
+            ActorUserId = Guid.NewGuid(),
+            Reason = "Test",
+            Amount = start.Amount,
+            Status = TicketCancellationStatus.ReviewRequired,
+            RequestedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
         await _db.SaveChangesAsync();
         var status = await _service.GetStatusAsync(command.AttemptId, CancellationToken.None);
         Assert.Empty(status!.Tickets); Assert.Equal("ReviewRequired", status.CancellationStatus);
@@ -286,9 +294,16 @@ public sealed class TourPaymentServiceTests : IDisposable
 
     private static ZiraatPosOptions ConfiguredOptions() => new()
     {
-        Enabled = true, MerchantId = "fake-merchant", ClientId = "fake-client", StoreKey = "fake-store-key",
-        ApiUser = "fake-user", ApiPassword = "fake-password", GatewayUrl = "https://bank.example.test/start",
-        ApiUrl = "https://bank.example.test/api", CallbackUrl = "https://api.example.test/callback", FrontendOrigin = "https://example.test",
+        Enabled = true,
+        MerchantId = "fake-merchant",
+        ClientId = "fake-client",
+        StoreKey = "fake-store-key",
+        ApiUser = "fake-user",
+        ApiPassword = "fake-password",
+        GatewayUrl = "https://bank.example.test/start",
+        ApiUrl = "https://bank.example.test/api",
+        CallbackUrl = "https://api.example.test/callback",
+        FrontendOrigin = "https://example.test",
     };
     private static StartTourPaymentCommand Command() => new(2, 3, 8366, new DateOnly(2099, 10, 3),
         [new(145, 2), new(146, 1)],
@@ -300,16 +315,24 @@ public sealed class TourPaymentServiceTests : IDisposable
 
     private static Dictionary<string, string> Callback(StartTourPaymentResult start) => new(StringComparer.OrdinalIgnoreCase)
     {
-        ["oid"] = start.TicketCode, ["amount"] = "4050.00", ["hashAlgorithm"] = "ver3", ["clientid"] = "fake-merchant",
-        ["currency"] = "949", ["mdStatus"] = "1", ["md"] = "fake-md", ["xid"] = "fake-xid", ["eci"] = "05", ["cavv"] = "fake-cavv",
+        ["oid"] = start.TicketCode,
+        ["amount"] = "4050.00",
+        ["hashAlgorithm"] = "ver3",
+        ["clientid"] = "fake-merchant",
+        ["currency"] = "949",
+        ["mdStatus"] = "1",
+        ["md"] = "fake-md",
+        ["xid"] = "fake-xid",
+        ["eci"] = "05",
+        ["cavv"] = "fake-cavv",
     };
 
     [Theory]
-    [InlineData(TourCategoryKeys.TurkishNight, 1)]
-    [InlineData(TourCategoryKeys.Bosphorus, 1)]
-    [InlineData(TourCategoryKeys.Sunset, 2)]
-    [InlineData(TourCategoryKeys.Daytime, 2)]
-    public async Task SuccessfulIssuanceQueuesCorrectStaffRecipientsOnlyOnce(string category, int count)
+    [InlineData(TourCategoryKeys.TurkishNight, "reservation@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@denturavrasya.com")]
+    [InlineData(TourCategoryKeys.Sunset, "omacit@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.Daytime, "omacit@pereme.com.tr")]
+    public async Task SuccessfulIssuanceQueuesCorrectStaffRecipientsOnlyOnce(string category, string expectedRecipient)
     {
         _booking.CategoryKey = category;
         var start = await _service.StartAsync(Command(), CancellationToken.None); _db.ChangeTracker.Clear();
@@ -317,7 +340,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.True((await _service.CompleteAsync(Callback(start), CancellationToken.None)).IsSuccessful);
         await _service.CompleteAsync(Callback(start), CancellationToken.None);
         var notifications = await _db.ReservationNotifications.ToListAsync();
-        Assert.Equal(count, notifications.Count);
+        Assert.Equal(expectedRecipient, Assert.Single(notifications).RecipientEmail);
         Assert.All(notifications, item => Assert.Equal(ReservationNotificationStatus.Queued, item.Status));
         Assert.Single(await _db.PaymentEmails.ToListAsync());
         Assert.Equal(1, _bank.AuthCalls); Assert.Equal(1, _sales.Calls);

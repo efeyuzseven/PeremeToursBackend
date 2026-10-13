@@ -97,6 +97,8 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
 
     internal MimeMessage CreateReservationMessage(ReservationNotification notification)
     {
+        if (!ReservationNotificationRouting.IsCurrentRecipient(notification, _options))
+            throw new EmailDeliveryException("RECIPIENT_CHANGED", "İç rezervasyon bildiriminin alıcısı güncel tur yönlendirmesiyle eşleşmiyor.");
         var sender = GetSender();
         if (!MailboxAddress.TryParse(notification.RecipientEmail, out var recipient))
             throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "İç rezervasyon bildirimi alıcı adresi geçersiz.");

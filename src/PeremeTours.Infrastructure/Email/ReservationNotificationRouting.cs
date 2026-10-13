@@ -9,16 +9,32 @@ internal static class ReservationNotificationRouting
     {
         if (ticket.PaymentStatus != TicketPaymentStatus.Paid || ticket.TicketingStatus != TicketingStatus.Issued
             || ticket.Status != TicketStatus.Confirmed || ticket.Cancellation is not null) return [];
-        var recipients = new List<string> { options.ReservationRecipient };
-        if (ticket.TourCategoryKey is TourCategoryKeys.Sunset or TourCategoryKeys.Daytime)
-            recipients.Add(options.SunsetDaytimeRecipient);
-        return recipients.Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim().ToLowerInvariant()).Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(value => new ReservationNotification
+        var recipient = RecipientFor(ticket.TourCategoryKey, options);
+        if (recipient is null) return [];
+        return [new ReservationNotification
             {
-                Id = Guid.NewGuid(), TicketId = ticket.Id, RecipientEmail = value,
+                Id = Guid.NewGuid(), TicketId = ticket.Id, RecipientEmail = recipient,
                 Status = ReservationNotificationStatus.Queued, CreatedAtUtc = now.UtcDateTime,
                 NextAttemptAtUtc = now.UtcDateTime,
-            }).ToArray();
+            }];
+    }
+
+    public static bool IsCurrentRecipient(ReservationNotification notification, MailOptions options)
+    {
+        var expected = RecipientFor(notification.Ticket.TourCategoryKey, options);
+        return expected is not null && string.Equals(expected, notification.RecipientEmail.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? RecipientFor(string? category, MailOptions options)
+    {
+        // Use only the trusted category snapshot. Editable tour names cannot select a recipient.
+        var recipient = category switch
+        {
+            TourCategoryKeys.TurkishNight => options.ReservationRecipient,
+            TourCategoryKeys.Bosphorus => options.BosphorusRecipient,
+            TourCategoryKeys.Sunset or TourCategoryKeys.Daytime => options.SunsetDaytimeRecipient,
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(recipient) ? null : recipient.Trim().ToLowerInvariant();
     }
 }

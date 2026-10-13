@@ -9,7 +9,8 @@ using PeremeTours.Infrastructure.Persistence;
 
 namespace PeremeTours.Infrastructure.Email;
 
-internal sealed class ReservationNotificationProcessor(PeremeToursDbContext db, IReservationNotificationSender sender, TimeProvider clock)
+internal sealed class ReservationNotificationProcessor(PeremeToursDbContext db, IReservationNotificationSender sender, TimeProvider clock,
+    IOptions<MailOptions> options)
 {
     private const int MaximumAttempts = 4;
 
@@ -56,6 +57,12 @@ internal sealed class ReservationNotificationProcessor(PeremeToursDbContext db, 
         if (notification.Ticket.Cancellation is not null || notification.Ticket.Status != TicketStatus.Confirmed
             || notification.Ticket.PaymentStatus != TicketPaymentStatus.Paid || notification.Ticket.TicketingStatus != TicketingStatus.Issued)
             notification.Status = ReservationNotificationStatus.Skipped;
+        else if (!ReservationNotificationRouting.IsCurrentRecipient(notification, options.Value))
+        {
+            // Do not retarget or replay historical outbox entries after a routing/configuration change.
+            notification.Status = ReservationNotificationStatus.Skipped;
+            notification.LastFailureCode = "RECIPIENT_CHANGED";
+        }
         else
         {
             try
