@@ -33,9 +33,28 @@ internal sealed class EmailDeliveryException(string code, string message, bool c
     public bool IsAmbiguous { get; } = isAmbiguous;
 }
 
-internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender, ICancellationEmailSender, IContactEmailSender
+internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IPaymentEmailSender, IReservationNotificationSender, IPasswordResetEmailSender, ICancellationEmailSender, IContactEmailSender, IContactReplyEmailSender
 {
     private readonly MailOptions _options = options.Value;
+
+    public Task SendAsync(ContactReply reply, CancellationToken cancellationToken) => DeliverAsync(CreateContactReplyMessage(reply), cancellationToken);
+
+    internal MimeMessage CreateContactReplyMessage(ContactReply reply)
+    {
+        var sender = GetSender();
+        // Destination is the original contact email, never an arbitrary address submitted by an administrator/client.
+        if (!MailboxAddress.TryParse(reply.RecipientEmail, out var recipient)
+            || !recipient.Address.Equals(reply.RecipientEmail, StringComparison.OrdinalIgnoreCase)
+            || !reply.RecipientEmail.Equals(reply.Request.Email, StringComparison.OrdinalIgnoreCase))
+            throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "Feedback reply recipient is invalid.");
+        var content = ContactReplyEmailTemplate.Render(reply);
+        var message = new MimeMessage { Subject = content.Subject, Date = reply.CreatedAtUtc,
+            MessageId = $"pereme-feedback-reply-{reply.Id:N}@{sender.Domain}",
+            Body = new BodyBuilder { HtmlBody = content.Html, TextBody = content.Text }.ToMessageBody() };
+        message.From.Add(new MailboxAddress(_options.SenderName, sender.Address));
+        message.To.Add(recipient); message.ReplyTo.Add(new MailboxAddress(_options.SenderName, sender.Address));
+        return message;
+    }
 
     public Task SendAsync(ContactEmail email, CancellationToken cancellationToken) => DeliverAsync(CreateContactMessage(email), cancellationToken);
 

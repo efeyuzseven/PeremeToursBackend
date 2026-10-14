@@ -95,6 +95,10 @@ public static class DependencyInjection
         services.AddScoped<ContactEmailProcessor>();
         services.AddHostedService<ContactEmailWorker>();
         services.AddScoped<IContactRequestService, ContactRequestService>();
+        services.AddScoped<IContactFeedbackService, ContactFeedbackService>();
+        services.AddScoped<IContactReplyEmailSender, SmtpPaymentEmailSender>();
+        services.AddScoped<ContactReplyEmailProcessor>();
+        services.AddHostedService<ContactReplyEmailWorker>();
         services.AddSingleton<ThreeDSecureFrameStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITourBookingService, TourBookingService>();

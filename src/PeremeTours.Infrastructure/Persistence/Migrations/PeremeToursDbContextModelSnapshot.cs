@@ -70,6 +70,70 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                     b.ToTable("ContactEmails");
                 });
 
+            modelBuilder.Entity("PeremeTours.Domain.Content.ContactReply", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AdminUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastFailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("LockToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdminUserId");
+
+                    b.HasIndex("RequestId", "Revision")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("ContactReplies");
+                });
+
             modelBuilder.Entity("PeremeTours.Domain.Content.ContactRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -104,12 +168,17 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("ReplyRevision")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Topic")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
 
                     b.ToTable("ContactRequests");
                 });
@@ -888,6 +957,23 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                     b.Navigation("Request");
                 });
 
+            modelBuilder.Entity("PeremeTours.Domain.Content.ContactReply", b =>
+                {
+                    b.HasOne("PeremeTours.Domain.Users.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AdminUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PeremeTours.Domain.Content.ContactRequest", "Request")
+                        .WithMany("Replies")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Request");
+                });
+
             modelBuilder.Entity("PeremeTours.Domain.Content.TourPageImage", b =>
                 {
                     b.HasOne("PeremeTours.Domain.Content.TourPage", null)
@@ -985,6 +1071,8 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("PeremeTours.Domain.Content.ContactRequest", b =>
                 {
                     b.Navigation("Emails");
+
+                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("PeremeTours.Domain.Tickets.TourTicket", b =>
