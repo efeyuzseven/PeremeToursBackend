@@ -28,7 +28,7 @@ internal sealed class PasswordResetService(PeremeToursDbContext db,
         var now = clock.GetUtcNow().UtcDateTime;
         var normalizedEmail = request.Email.Trim().ToUpperInvariant();
         var account = await db.Users.SingleOrDefaultAsync(user => user.NormalizedEmail == normalizedEmail
-            && user.IsActive, cancellationToken);
+            && user.IsActive && !user.IsDeleted, cancellationToken);
         if (account is null) return;
         var since = now.AddHours(-1);
         var requests = await db.PasswordResetTokens.AsNoTracking()
@@ -54,12 +54,12 @@ internal sealed class PasswordResetService(PeremeToursDbContext db,
         var hash = HashToken(token);
         var reset = await db.PasswordResetTokens.AsNoTracking().Include(item => item.User)
             .SingleOrDefaultAsync(item => item.TokenHash == hash && item.ConsumedAtUtc == null
-                && item.ExpiresAtUtc > now && item.User.IsActive, cancellationToken);
+                && item.ExpiresAtUtc > now && item.User.IsActive && !item.User.IsDeleted, cancellationToken);
         if (reset is null || reset.AuthenticationStamp != reset.User.AuthenticationStamp) return false;
         var passwordHash = hasher.HashPassword(reset.User, password);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var stamp = Guid.NewGuid();
-        var updated = await db.Users.Where(user => user.Id == reset.UserId && user.IsActive
+        var updated = await db.Users.Where(user => user.Id == reset.UserId && user.IsActive && !user.IsDeleted
                 && user.AuthenticationStamp == reset.AuthenticationStamp)
             .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.PasswordHash, passwordHash)
                 .SetProperty(user => user.AuthenticationStamp, stamp)

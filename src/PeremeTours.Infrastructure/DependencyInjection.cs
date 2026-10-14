@@ -75,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordResetEmailSender, SmtpPaymentEmailSender>();
         services.AddHostedService<PasswordResetWorker>();
         services.AddScoped<IUserAdminService, UserAdminService>();
+        services.AddScoped<IAccountManagementService, AccountManagementService>();
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ITicketErrorService, TicketErrorService>();
         services.AddScoped<ITicketCancellationService, TicketCancellationService>();

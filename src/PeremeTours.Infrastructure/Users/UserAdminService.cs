@@ -20,6 +20,7 @@ internal sealed class UserAdminService(PeremeToursDbContext dbContext, IConfigur
     {
         return await dbContext.Users
             .AsNoTracking()
+            .Where(user => !user.IsDeleted)
             .OrderByDescending(user => user.CreatedAtUtc)
             .Select(user => new UserSummary(
                 user.Id,
@@ -53,10 +54,10 @@ internal sealed class UserAdminService(PeremeToursDbContext dbContext, IConfigur
         {
             // Serialize permission checks and updates; races must not partially edit a profile or remove both administrators.
             await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-            if (!await dbContext.Users.AnyAsync(user => user.Id == actorUserId && user.IsActive && user.Role == UserRoles.Admin, cancellationToken))
+            if (!await dbContext.Users.AnyAsync(user => user.Id == actorUserId && user.IsActive && !user.IsDeleted && user.Role == UserRoles.Admin, cancellationToken))
                 return UpdateUserStatus.Forbidden;
             var account = await dbContext.Users.SingleOrDefaultAsync(
-                user => user.Id == userId,
+                user => user.Id == userId && !user.IsDeleted,
                 cancellationToken
             );
             if (account is null)

@@ -19,6 +19,11 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
+- `GET /api/v1/account/profile`
+- `PATCH /api/v1/account/profile`
+- `POST /api/v1/account/password`
+- `DELETE /api/v1/account`
+- `GET /api/v1/account/reservations`
 - `GET /api/v1/tours`
 - `GET /api/v1/tours/{externalTourId}/ports`
 - `GET /api/v1/tours/{externalTourId}/availability?departurePortId=3&saleType=2`
@@ -55,6 +60,10 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/system/ready` (veritabanı bağlantısını doğrular; erişilemiyorsa `503`)
 
 `admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
+
+Hesap yönetimi yalnızca JWT'deki kullanıcı kimliğine işlem yapar; istemciden sahiplik veya rol alınmaz. Profil güncellemesi `firstName`, `lastName`, `email` alanlarını alır; e-posta değişecekse `currentPassword` gerekir. Şifre değişikliği `currentPassword` ve `newPassword` (8–128 karakter, büyük/küçük harf ve rakam), hesap silme ise `currentPassword` ve `confirmed: true` ister. Yazma uçları IP başına 15 dakikada 10 isteğe sınırlıdır ve `no-store` döner. Değişiklikler serializable işlemde, token damgası tekrar doğrulanarak ve özgün satır sürümüyle karşılaştırılarak uygulanır. Şifre/e-posta değişikliği tüm eski JWT'leri ve şifre sıfırlama bağlantılarını geçersiz kılar; sonuç `requiresLogin: true` döner. Ad/soyad değişikliği oturumu kapatmaz.
+
+Hesap silmede profil adı/e-postası anonimleştirilir, parola hash'i temizlenir, `IsActive=false`, `IsDeleted=true` ve `DeletedAtUtc` kaydedilir. Kullanıcı satırı yabancı anahtarlar için tutulur; bilet, yolcu, tahsilat, iptal/iade ve operasyon kayıtları silinmez/değişmez. İşlem banka veya EasyTicket çağrısı yapmaz ve bilet iptali/iade başlatmaz. Silinen hesap yönetici listesine gelmez, yeniden etkinleştirilemez ve aynı e-postayla yeni kayıt eski `UserId` veya rezervasyon sahipliğini devralmaz. Dağıtımın varsayılan yönetici hesabı silinemez/e-postası değiştirilemez; son aktif yönetici silinemez. `GET profile` bu korumaları `canEditEmail`, `canDeleteAccount`, `deletionBlockedReason` alanlarıyla bildirir; bu hesaplar ad/soyad ve şifrelerini değiştirebilir. `AddAccountDeletion` migration'ı yalnızca iki kullanıcı sütunu ekler; mevcut kayıtları silmez.
 
 Kullanıcı yönetimi: `PATCH /api/v1/admin/users/{id}` ad (`firstName`, zorunlu olduğunda 1–100 karakter), soyad (`lastName`, en fazla 100 karakter) ve e-posta (`email`, en fazla 320 karakter) alanlarını kısmi olarak günceller; mevcut `role` / `isActive` alanları korunur. Atlanan veya `null` alan değişmez; boş soyad temizlenir. Ad/soyad kırpılır ve e-posta küçük harfe normalleştirilir. Aktif olmayan hesaplar dahil aynı e-posta başka hesapta kullanılıyorsa `409 USER_EMAIL_ALREADY_EXISTS` döner. Liste ve güncelleme yanıtları `no-store` kullanır; parola/kimlik doğrulama damgası DTO'ya eklenmez.
 

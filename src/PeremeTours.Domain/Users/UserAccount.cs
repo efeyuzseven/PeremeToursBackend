@@ -14,12 +14,17 @@ public sealed class UserAccount
 
     public required string PasswordHash { get; set; }
 
-    // Null preserves existing sessions until the account's first password reset.
+    // Null preserves legacy sessions until the account's first credential/access change.
     public Guid? AuthenticationStamp { get; set; }
 
     public required string Role { get; set; }
 
     public bool IsActive { get; set; }
+
+    // A tombstone preserves financial records and administrator audit foreign keys without a reusable login.
+    public bool IsDeleted { get; set; }
+
+    public DateTimeOffset? DeletedAtUtc { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 

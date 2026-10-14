@@ -72,7 +72,7 @@ internal sealed class AuthenticationService(
             user => user.NormalizedEmail == normalizedEmail,
             cancellationToken
         );
-        if (account is null || !account.IsActive)
+        if (account is null || !account.IsActive || account.IsDeleted)
         {
             return null;
         }
@@ -95,7 +95,7 @@ internal sealed class AuthenticationService(
             );
             var now = DateTimeOffset.UtcNow;
             // A simultaneous reset must not be overwritten by a login's legacy-hash upgrade.
-            var updated = await dbContext.Users.Where(user => user.Id == account.Id && user.IsActive
+            var updated = await dbContext.Users.Where(user => user.Id == account.Id && user.IsActive && !user.IsDeleted
                     && user.PasswordHash == originalHash && user.AuthenticationStamp == account.AuthenticationStamp)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.PasswordHash, replacementHash)
                     .SetProperty(user => user.UpdatedAtUtc, now), cancellationToken);
@@ -114,7 +114,7 @@ internal sealed class AuthenticationService(
     {
         return await dbContext.Users
             .AsNoTracking()
-            .Where(user => user.Id == userId && user.IsActive)
+            .Where(user => user.Id == userId && user.IsActive && !user.IsDeleted)
             .Select(user => new AuthenticatedUser(
                 user.Id,
                 user.Email,

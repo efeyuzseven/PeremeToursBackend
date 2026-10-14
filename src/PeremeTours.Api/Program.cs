@@ -84,11 +84,12 @@ builder.Services
                 var currentUser = await dbContext.Users
                     .AsNoTracking()
                     .Where(user => user.Id == userId)
-                    .Select(user => new { user.IsActive, user.Role, user.AuthenticationStamp })
+                    .Select(user => new { user.IsActive, user.IsDeleted, user.Role, user.AuthenticationStamp })
                     .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
                 if (
                     currentUser is null
                     || !currentUser.IsActive
+                    || currentUser.IsDeleted
                     || currentUser.Role != tokenRole
                     || (currentUser.AuthenticationStamp is { } stamp
                         && context.Principal?.FindFirstValue("auth_stamp") != stamp.ToString("N"))
@@ -103,6 +104,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("account-security", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        { PermitLimit = 10, Window = TimeSpan.FromMinutes(15), QueueLimit = 0, AutoReplenishment = true }));
     options.AddPolicy("feedback-reply", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
