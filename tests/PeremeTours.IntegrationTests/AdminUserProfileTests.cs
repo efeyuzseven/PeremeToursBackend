@@ -96,6 +96,111 @@ public sealed class AdminUserProfileTests : IDisposable
         Assert.Equal("Fixture", Snapshot(_userId).FirstName);
     }
 
+    [Theory]
+    [InlineData(UserRoles.Admin)]
+    [InlineData(UserRoles.User)]
+    [InlineData(UserRoles.Editor)]
+    [InlineData(UserRoles.Advisor)]
+    [InlineData(UserRoles.Service)]
+    public async Task AdminCreatesAnyRoleWithoutChangingOwnSessionOrReturningSecrets(string role)
+    {
+        var token = await Login("admin@example.test");
+        using var response = await Create(new { firstName = "  Created  ", lastName = " Person ",
+            email = " NEW@EXAMPLE.TEST ", password = Password, role, id = _adminId, isActive = false, isDeleted = true }, token);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode); Assert.True(response.Headers.CacheControl!.NoStore);
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(Password, raw, StringComparison.Ordinal);
+        foreach (var secret in new[] { "passwordHash", "authenticationStamp", "accessToken", "password" })
+            Assert.DoesNotContain(secret, raw, StringComparison.OrdinalIgnoreCase);
+        using var body = JsonDocument.Parse(raw);
+        var id = body.RootElement.GetProperty("id").GetGuid(); Assert.NotEqual(_adminId, id);
+        var created = Snapshot(id);
+        Assert.Equal("new@example.test", created.Email); Assert.Equal("NEW@EXAMPLE.TEST", created.NormalizedEmail);
+        Assert.Equal("Created", created.FirstName); Assert.Equal("Person", created.LastName); Assert.Equal(role, created.Role);
+        Assert.True(created.IsActive); Assert.False(created.IsDeleted); Assert.NotNull(created.AuthenticationStamp);
+        Assert.NotEqual(Password, created.PasswordHash);
+        Assert.NotEqual(PasswordVerificationResult.Failed, new PasswordHasher<UserAccount>().VerifyHashedPassword(created, created.PasswordHash, Password));
+        var fresh = await Login("new@example.test");
+        using var me = await Get("/api/v1/auth/me", fresh); using var identity = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+        Assert.Equal(role, identity.RootElement.GetProperty("role").GetString());
+        using var admin = await Get("/api/v1/admin/users", token); Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
+        WithDb(db => { Assert.Equal(4, db.Users.Count()); Assert.Single(db.PasswordResetTokens); Assert.Single(db.TourTickets); });
+    }
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(UserRoles.User, HttpStatusCode.Forbidden)]
+    [InlineData(UserRoles.Editor, HttpStatusCode.Forbidden)]
+    [InlineData(UserRoles.Advisor, HttpStatusCode.Forbidden)]
+    [InlineData(UserRoles.Service, HttpStatusCode.Forbidden)]
+    public async Task OnlyAdminsCanCreateAccountsIncludingOtherAdmins(string? role, HttpStatusCode expected)
+    {
+        string? token = null;
+        if (role is not null)
+        {
+            WithDb(db => { db.Users.Single(user => user.Id == _userId).Role = role; db.SaveChanges(); });
+            token = await Login("guest@example.test");
+        }
+        using var response = await Create(new { firstName = "Created", email = "new@example.test", password = Password, role = UserRoles.Admin }, token);
+        Assert.Equal(expected, response.StatusCode); WithDb(db => Assert.Equal(3, db.Users.Count()));
+    }
+
+    [Theory]
+    [InlineData("name")][InlineData("email")][InlineData("role")][InlineData("lowercase-role")]
+    [InlineData("password")][InlineData("long-password")][InlineData("missing-role")]
+    public async Task InvalidCreationNeverWritesAnAccount(string mode)
+    {
+        var payload = new Dictionary<string, object?> { ["firstName"] = "Created", ["lastName"] = "Person", ["email"] = "new@example.test", ["password"] = Password, ["role"] = UserRoles.User };
+        switch (mode)
+        {
+            case "name": payload["firstName"] = "  "; break;
+            case "email": payload["email"] = "invalid"; break;
+            case "role": payload["role"] = "Owner"; break;
+            case "lowercase-role": payload["role"] = "admin"; break;
+            case "password": payload["password"] = "weakpassword"; break;
+            case "long-password": payload["password"] = new string('A', 129) + "a1"; break;
+            default: payload.Remove("role"); break;
+        }
+        using var response = await Create(payload, await Login("admin@example.test"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode); WithDb(db => Assert.Equal(3, db.Users.Count()));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DuplicateEmailCannotReplaceAnExistingAccountOrPassword(bool active)
+    {
+        WithDb(db => { db.Users.Single(user => user.Id == _userId).IsActive = active; db.SaveChanges(); });
+        var before = Snapshot(_userId); var token = await Login("admin@example.test");
+        using var response = await Create(new { firstName = "Must not replace", email = " GUEST@EXAMPLE.TEST ", password = "DifferentPassword2", role = UserRoles.Admin }, token);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("USER_EMAIL_ALREADY_EXISTS", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        var after = Snapshot(_userId); Assert.Equal(before.PasswordHash, after.PasswordHash);
+        Assert.Equal(before.FirstName, after.FirstName); Assert.Equal(before.Role, after.Role); Assert.Equal(active, after.IsActive);
+        WithDb(db => Assert.Equal(3, db.Users.Count()));
+    }
+
+    [Fact]
+    public async Task CreateChecksCurrentActorRoleAndAuthenticationStampInsideTransaction()
+    {
+        var actor = Snapshot(_adminId);
+        WithDb(db => { db.Users.Single(user => user.Id == _adminId).AuthenticationStamp = Guid.NewGuid(); db.SaveChanges(); });
+        using var scope = _factory.Services.CreateScope(); var service = scope.ServiceProvider.GetRequiredService<IUserAdminService>();
+        var result = await service.CreateAsync(_adminId, actor.AuthenticationStamp?.ToString("N"), new("Created", null, "new@example.test", Password, UserRoles.Admin), CancellationToken.None);
+        Assert.Equal(CreateUserStatus.Forbidden, result.Status); WithDb(db => Assert.Equal(3, db.Users.Count()));
+    }
+
+    [Fact]
+    public async Task NewAccountNeverInheritsReservationsByContactEmail()
+    {
+        WithDb(db => { db.TourTickets.Single().CustomerEmail = "new@example.test"; db.SaveChanges(); });
+        using var response = await Create(new { firstName = "Created", email = "new@example.test", password = Password, role = UserRoles.User }, await Login("admin@example.test"));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var reservations = await Get("/api/v1/account/reservations", await Login("new@example.test"));
+        Assert.Equal("[]", await reservations.Content.ReadAsStringAsync());
+        WithDb(db => Assert.Equal(_userId, db.TourTickets.Single().UserId));
+    }
+
     [Fact]
     public async Task ProfileEditingPreservesPasswordRoleAndBookingOwnership()
     {
@@ -291,6 +396,12 @@ public sealed class AdminUserProfileTests : IDisposable
     private async Task<HttpResponseMessage> Patch(Guid id, object body, string? token = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/admin/users/{id}") { Content = JsonContent.Create(body) };
+        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await _client.SendAsync(request);
+    }
+    private async Task<HttpResponseMessage> Create(object body, string? token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/users") { Content = JsonContent.Create(body) };
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await _client.SendAsync(request);
     }

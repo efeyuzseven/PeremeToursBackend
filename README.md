@@ -48,6 +48,7 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `PUT /api/v1/admin/faqs/{id}`
 - `DELETE /api/v1/admin/faqs/{id}`
 - `GET /api/v1/admin/users`
+- `POST /api/v1/admin/users`
 - `PATCH /api/v1/admin/users/{id}`
 - `GET /api/v1/admin/tickets`
 - `POST /api/v1/admin/tickets`
@@ -62,6 +63,8 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 Panel uçları geçerli JWT ve ilgili alana ait güncel rol ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
 
 ## Panel yetkileri
+
+`POST /api/v1/admin/users` yalnızca güncel aktif Admin içindir. `firstName` (1–100), isteğe bağlı `lastName` (0–100), `email` (en fazla 320), `password` (8–128, büyük/küçük harf ve rakam) ve `role` (Admin/User/Editor/Advisor/Service) alır. Yeni GUID ve kimlik doğrulama damgasıyla aktif hesap oluşturur; 201 yanıtı yalnızca `UserSummary` içerir, token veya parola/hash döndürmez. Aktif/pasif mevcut e-postada 409 döner; mevcut hesabı güncellemez veya yeniden etkinleştirmez. İzin ve oturum damgası serializable işlem içinde yeniden kontrol edilir, parola mevcut Identity hasher'ıyla hash'lenir. E-posta bildirimi veya rezervasyon sahipliği aktarımı yapılmaz. Admin/kullanıcı GUID'leri ve rol yapılandırılmış işlem günlüğüne yazılır; e-posta/şifre yazılmaz. Uç 16 KB gövde ve IP başına dakikada 10 istekle sınırlıdır; `no-store` döner. Yeni migration gerektirmez.
 
 - **Admin:** Tüm panel uçları; kullanıcı/rol yönetimi, içerikler, manuel bilet işlemleri, iptal/iade ve geri bildirim yanıtları.
 - **Editor / Advisor:** Yalnızca `admin/site-content`, `admin/tour-contents`, `admin/tour-pages`, `admin/faqs` okuma/düzenleme/görsel yükleme uçları. İki rol aynı yetkilere sahiptir.

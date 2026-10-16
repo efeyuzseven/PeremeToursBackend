@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PeremeTours.Application.Users;
 using PeremeTours.Domain.Users;
 
@@ -13,6 +14,28 @@ namespace PeremeTours.Api.Controllers;
 public sealed class AdminUsersController(IUserAdminService userAdminService)
     : ControllerBase
 {
+    [HttpPost]
+    [EnableRateLimiting("user-create")]
+    [RequestSizeLimit(16 * 1024)]
+    [ProducesResponseType<UserSummary>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<UserSummary>> Create(CreateUserRequest request, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId)) return Forbid();
+        var result = await userAdminService.CreateAsync(actorId, User.FindFirstValue("auth_stamp"),
+            new(request.FirstName, request.LastName, request.Email, request.Password, request.Role), cancellationToken);
+        return result.Status switch
+        {
+            CreateUserStatus.Created => StatusCode(StatusCodes.Status201Created, result.User),
+            CreateUserStatus.Forbidden => Forbid(),
+            CreateUserStatus.InvalidRole => Problem(statusCode: 400, title: "USER_ROLE_INVALID"),
+            CreateUserStatus.InvalidProfile => Problem(statusCode: 400, title: "USER_PROFILE_INVALID"),
+            CreateUserStatus.InvalidPassword => Problem(statusCode: 400, title: "PASSWORD_POLICY_INVALID"),
+            CreateUserStatus.EmailAlreadyExists => Problem(statusCode: 409, title: "USER_EMAIL_ALREADY_EXISTS"),
+            _ => Problem(statusCode: 409, title: "USER_CREATE_CONFLICT"),
+        };
+    }
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<UserSummary>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<UserSummary>>> List(
@@ -86,4 +109,13 @@ public sealed class UpdateUserRequest
     public string? Role { get; init; }
 
     public bool? IsActive { get; init; }
+}
+
+public sealed class CreateUserRequest
+{
+    [Required, StringLength(100)] public required string FirstName { get; init; }
+    [StringLength(100)] public string? LastName { get; init; }
+    [Required, EmailAddress, StringLength(320)] public required string Email { get; init; }
+    [Required, StringLength(128, MinimumLength = 8)] public required string Password { get; init; }
+    [Required, StringLength(32)] public required string Role { get; init; }
 }

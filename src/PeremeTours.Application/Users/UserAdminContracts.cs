@@ -32,8 +32,15 @@ public enum UpdateUserStatus
     Conflict,
 }
 
+public sealed record CreateUserCommand(string FirstName, string? LastName, string Email, string Password, string Role);
+public enum CreateUserStatus { Created, Forbidden, InvalidRole, InvalidProfile, InvalidPassword, EmailAlreadyExists, Conflict }
+public sealed record CreateUserResult(CreateUserStatus Status, UserSummary? User = null);
+
 public interface IUserAdminService
 {
+    Task<CreateUserResult> CreateAsync(Guid actorUserId, string? authenticationStamp,
+        CreateUserCommand command, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<UserSummary>> ListAsync(
         CancellationToken cancellationToken
     );
