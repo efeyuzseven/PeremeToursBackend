@@ -59,7 +59,16 @@ Teknolojiler: .NET 10, ASP.NET Core Web API, EF Core, Npgsql/PostgreSQL ve JWT B
 - `GET /api/v1/system/health`
 - `GET /api/v1/system/ready` (veritabanı bağlantısını doğrular; erişilemiyorsa `503`)
 
-`admin` uçları hem geçerli JWT hem de güncel `Admin` rolü ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
+Panel uçları geçerli JWT ve ilgili alana ait güncel rol ister. Kullanıcı kapatılır veya rolü değiştirilirse eski token anında reddedilir.
+
+## Panel yetkileri
+
+- **Admin:** Tüm panel uçları; kullanıcı/rol yönetimi, içerikler, manuel bilet işlemleri, iptal/iade ve geri bildirim yanıtları.
+- **Editor / Advisor:** Yalnızca `admin/site-content`, `admin/tour-contents`, `admin/tour-pages`, `admin/faqs` okuma/düzenleme/görsel yükleme uçları. İki rol aynı yetkilere sahiptir.
+- **Service:** `admin/feedback` liste/detay/yanıt; `admin/ticket-errors` liste; `admin/tickets` liste, iptal sonucu okuma ve açık onaylı tam rezervasyon iptal/iade. Manuel bilet oluşturma ve doğrudan bilet güncelleme kapalıdır.
+- **User:** Panel erişimi yoktur; kendi hesabı ve rezervasyonları mevcut akışla kullanılabilir.
+
+Rol atama yalnızca Admin tarafından `PATCH admin/users/{id}` ile yapılır. Kendi Admin rolünü Editor/Advisor/Service/User'a düşürme engellenir. Her rol değişikliği kimlik doğrulama damgasını yeniler ve eski JWT/sıfırlama bağlantılarını geçersiz kılar. İptal/iade ve yanıt gönderiminde güncel aktif kullanıcı rolü ayrıca kontrol edilir; işlemi yapanın kullanıcı kimliği denetim kaydında tutulur. Kayıt olma her zaman User üretir. Rol sütunu metin olduğundan bu değişiklik migration veya mevcut kullanıcıların rollerinde toplu güncelleme gerektirmez.
 
 Hesap yönetimi yalnızca JWT'deki kullanıcı kimliğine işlem yapar; istemciden sahiplik veya rol alınmaz. Profil güncellemesi `firstName`, `lastName`, `email` alanlarını alır; e-posta değişecekse `currentPassword` gerekir. Şifre değişikliği `currentPassword` ve `newPassword` (8–128 karakter, büyük/küçük harf ve rakam), hesap silme ise `currentPassword` ve `confirmed: true` ister. Yazma uçları IP başına 15 dakikada 10 isteğe sınırlıdır ve `no-store` döner. Değişiklikler serializable işlemde, token damgası tekrar doğrulanarak ve özgün satır sürümüyle karşılaştırılarak uygulanır. Şifre/e-posta değişikliği tüm eski JWT'leri ve şifre sıfırlama bağlantılarını geçersiz kılar; sonuç `requiresLogin: true` döner. Ad/soyad değişikliği oturumu kapatmaz.
 
@@ -335,17 +344,17 @@ sonuç belirsizse ya da worker gönderimi bitirmeden kapanırsa `ReviewRequired`
 SMTP kaydı kontrol edilmeden otomatik yeniden gönderilmez. SMTP'nin kabulü inbox'a
 ulaşmayı garanti etmez; spam/bounce takibi gönderici mail sunucusunun sorumluluğundadır.
 
-Admin ekranı: `/admin/ticket-errors`; sadece Admin rolü erişebilir.
+Panel ekranı: `/admin/ticket-errors`; Admin ve Service rolleri erişebilir.
 
 ### İletişim geri bildirimleri ve admin yanıtları
 
-`GET /api/v1/admin/feedback?search=...&filter=Unanswered&page=1&pageSize=20` ve `GET /api/v1/admin/feedback/{id}` yalnızca güncel, aktif Admin yetkisiyle erişilebilir; yanıtlar `no-store` olarak sunulur. Yanıt yazılmış filtre değeri `Answered` (mail başarı durumu değil, yanıt oluşturulmuş olması). Detay, orijinal iletişim talebini, iç bildirim durumlarını ve değiştirilemeyen yanıt geçmişini döndürür.
+`GET /api/v1/admin/feedback?search=...&filter=Unanswered&page=1&pageSize=20` ve `GET /api/v1/admin/feedback/{id}` yalnızca güncel, aktif Admin veya Service yetkisiyle erişilebilir; yanıtlar `no-store` olarak sunulur. Yanıt yazılmış filtre değeri `Answered` (mail başarı durumu değil, yanıt oluşturulmuş olması). Detay, orijinal iletişim talebini, iç bildirim durumlarını ve değiştirilemeyen yanıt geçmişini döndürür.
 
 `POST /api/v1/admin/feedback/{id}/replies`: `{ replyId: UUID, expectedRevision: 0, body: "Yanıt" }`, en fazla 6000 karakter; IP başına dakikada 10 işlem sınırı. Alıcı orijinal talebin e-posta adresinden sunucuda alınır, istemciden alıcı/From/CC kabul edilmez. Aktörün güncel Admin yetkisi yeniden doğrulanır. Talebin `ReplyRevision` alanı atomik CAS ile artırılır ve `ContactReplies` yanıt/gönderim kaydı aynı transaction'da eklenir; iki adminin farklı eski taslakları 409 ile ayrılır. Aynı `replyId` ve içerik HTTP yeniden denemesinde yeni mail oluşturmaz. Son yanıt değişmemişse (bilinen `Failed` hariç) yeni anahtar da aynı kaydı döndürür. Önceki `Queued`, `Processing` veya `ReviewRequired` yanıt varken farklı yeni yanıt başlatılmaz. Bilinen başarısız yanıt ancak adminin yeni, açık gönderim işlemiyle tekrar denenebilir.
 
 `ContactReplyEmailWorker` mevcut SMTP bağlantı güvenliği/kimlik ayarlarını kullanır. Mail sadece müşteriye gider; ekip bildirimi alıcılarına kopyalanmaz. TR/EN şablon müşterinin orijinal mesaj diline göre seçilir; kullanıcı ve admin metinleri HTML encode edilir, düz metin alternatifi vardır. `Sent` SMTP kabulünü belirtir, inbox teslim garantisi değildir. Bilinen geçici hatalar en fazla 4 deneme, belirsiz gönderim/süresi dolan lease `ReviewRequired` ve otomatik tekrar yok. Gönderim kullanıcı/admin kimliğini veya içerikleri loglamaz. Migration yalnızca reply alanını, yeni yanıt tablosunu ve indekslerini ekler; eski talepleri silmez, geçmiş mesajlara otomatik yanıt/mail üretmez. Rezervasyon, ödeme ve iptal mail yönlendirmelerinden bağımsızdır.
 
-Ana sayfa CMS: `/api/v1/admin/site-content/homepage` (yalnızca Admin). Yeni `texts`, `images`, `imagePositions`, `hiddenSections` alanları eskiden kaydedilmiş JSON içerikleriyle uyumludur. Eski istemcinin bu alanları göndermemesi mevcut değerleri silmez. Ana sayfa görsel yükleme `POST /api/v1/admin/site-content/homepage/images`: JPG/PNG/WebP, içerik imzası doğrulanır, en fazla 8 MB. S3 nesneleri rastgele ve değişmez anahtarlarla aynı özel görsel kovasında saklanır; sadece kaydedilmiş JSON içeriği yayınlanır. Eski görseller yüklemede silinmez. Genel içerik `no-store`, görseller `immutable` olarak sunulur.
+Ana sayfa CMS: `/api/v1/admin/site-content/homepage` (Admin, Editor, Advisor). Yeni `texts`, `images`, `imagePositions`, `hiddenSections` alanları eskiden kaydedilmiş JSON içerikleriyle uyumludur. Eski istemcinin bu alanları göndermemesi mevcut değerleri silmez. Ana sayfa görsel yükleme `POST /api/v1/admin/site-content/homepage/images`: JPG/PNG/WebP, içerik imzası doğrulanır, en fazla 8 MB. S3 nesneleri rastgele ve değişmez anahtarlarla aynı özel görsel kovasında saklanır; sadece kaydedilmiş JSON içeriği yayınlanır. Eski görseller yüklemede silinmez. Genel içerik `no-store`, görseller `immutable` olarak sunulur.
 
 İletişim talepleri: anonim `POST /api/v1/contact-requests`, 16 KB gövde sınırı, alan doğrulama, honeypot ve IP başına 15 dakikada 5 istek sınırı. `requestId` istemcinin rastgele UUID anahtarıdır; aynı anahtar ve aynı normalize içerik yeniden işlenmez, farklı içerik 409 olur. Talep ve iki e-posta işi tek işlemde PostgreSQL'e kaydedilir. Yanıt 202, **talep alındı** anlamındadır, gelen kutusu teslim garantisi değildir. Alıcılar `MailSettings:ContactRecipients`: `eyilmaz@denturavrasya.com`, `uakseloglu@denturavrasya.com`. Bunlar tur rezervasyonlarının kategori bazlı alıcılarından bağımsızdır. Gönderici mevcut Dentur SMTP hesabı, Reply-To talebin doğrulanmış e-posta adresidir; HTML alanları encode edilir. Her alıcı ayrı işlenir. Bilinen geçici bağlantı/reddetme hataları en fazla 4 kez denenir; belirsiz gönderim veya süresi dolmuş iş `ReviewRequired` olur, otomatik tekrar gönderilmez. İçerik/SMTP ham hataları loglanmaz. Gönderim durumları `ContactEmails` tablosundadır; talep içeriği `ContactRequests` tablosundadır, herkese açık okuma endpoint'i yoktur. Bu değişiklik eski taleplere geriye dönük mail göndermez.
 API: `GET /api/v1/admin/ticket-errors?stage=Payment&page=1&pageSize=20&search=PRM-`.

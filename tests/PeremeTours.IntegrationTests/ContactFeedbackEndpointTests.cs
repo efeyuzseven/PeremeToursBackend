@@ -34,7 +34,8 @@ public sealed class ContactFeedbackEndpointTests : IClassFixture<WebApplicationF
     }
     [Theory]
     [InlineData(null, HttpStatusCode.Unauthorized)][InlineData("User", HttpStatusCode.Forbidden)][InlineData("Admin", HttpStatusCode.OK)]
-    public async Task AllFeedbackReadsAndReplyWritesAreAdministratorOnly(string? role, HttpStatusCode expected)
+    [InlineData("Service", HttpStatusCode.OK)][InlineData("Editor", HttpStatusCode.Forbidden)][InlineData("Advisor", HttpStatusCode.Forbidden)]
+    public async Task AllFeedbackReadsAndReplyWritesRequireSupportPermission(string? role, HttpStatusCode expected)
     {
         foreach (var path in new[] { "/api/v1/admin/feedback", $"/api/v1/admin/feedback/{ContactId}" })
         {

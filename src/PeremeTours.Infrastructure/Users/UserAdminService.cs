@@ -66,7 +66,7 @@ internal sealed class UserAdminService(PeremeToursDbContext dbContext, IConfigur
             }
             if (
                 actorUserId == userId
-                && (command.IsActive == false || command.Role == UserRoles.User)
+                && (command.IsActive == false || (command.Role is not null && command.Role != UserRoles.Admin))
             )
             {
                 return UpdateUserStatus.SelfLockout;

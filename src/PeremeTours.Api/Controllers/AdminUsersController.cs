@@ -57,7 +57,7 @@ public sealed class AdminUsersController(IUserAdminService userAdminService)
             UpdateUserStatus.InvalidRole => BadRequest(new ProblemDetails
             {
                 Title = "Geçersiz rol",
-                Detail = "Rol Admin veya User olmalıdır.",
+                Detail = "Rol Admin, User, Editor, Advisor veya Service olmalıdır.",
                 Status = StatusCodes.Status400BadRequest,
             }),
             UpdateUserStatus.SelfLockout => BadRequest(new ProblemDetails

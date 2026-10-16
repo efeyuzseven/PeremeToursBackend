@@ -7,7 +7,7 @@ using PeremeTours.Domain.Users;
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.ContentManagers)]
 [Route("api/v1/admin/tour-contents")]
 public sealed class AdminTourContentsController(
     ITourContentService tourContentService

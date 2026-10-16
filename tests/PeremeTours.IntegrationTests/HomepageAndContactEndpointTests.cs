@@ -40,7 +40,8 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
     [InlineData(null, HttpStatusCode.Unauthorized)]
     [InlineData("User", HttpStatusCode.Forbidden)]
     [InlineData("Admin", HttpStatusCode.OK)]
-    public async Task OnlyAdminsCanSaveHomepageAndUploadImages(string? role, HttpStatusCode expected)
+    [InlineData("Editor", HttpStatusCode.OK)][InlineData("Advisor", HttpStatusCode.OK)][InlineData("Service", HttpStatusCode.Forbidden)]
+    public async Task OnlyContentManagersCanSaveHomepageAndUploadImages(string? role, HttpStatusCode expected)
     {
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/site-content/homepage") { Content = JsonContent.Create(Document()) };
         if (role is not null) request.Headers.Add("X-Test-Role", role);

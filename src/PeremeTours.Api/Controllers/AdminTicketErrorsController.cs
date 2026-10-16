@@ -8,7 +8,7 @@ using PeremeTours.Domain.Users;
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.CustomerSupport)]
 [Route("api/v1/admin/ticket-errors")]
 public sealed class AdminTicketErrorsController(ITicketErrorService service) : ControllerBase
 {
@@ -17,5 +17,8 @@ public sealed class AdminTicketErrorsController(ITicketErrorService service) : C
         [FromQuery, EnumDataType(typeof(TicketErrorStage))] TicketErrorStage? stage,
         [FromQuery, Range(1, 100000)] int page = 1, [FromQuery, Range(1, 100)] int pageSize = 20,
         CancellationToken cancellationToken = default)
-        => Ok(await service.ListAsync(search, stage, page, pageSize, cancellationToken));
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await service.ListAsync(search, stage, page, pageSize, cancellationToken));
+    }
 }

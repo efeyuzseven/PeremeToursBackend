@@ -107,11 +107,22 @@ public sealed class ContactFeedbackTests : IDisposable
 
     [Theory]
     [InlineData("User", true)][InlineData("Admin", false)]
-    public async Task CurrentActiveAdministratorIsRequiredEvenForIdempotentRetry(string role, bool active)
+    [InlineData("Editor", true)][InlineData("Advisor", true)][InlineData("Service", false)]
+    public async Task CurrentActiveSupportPermissionIsRequiredEvenForIdempotentRetry(string role, bool active)
     {
         var id = await Contact(); var answer = Answer(); await Reply(id, answer);
         await _db.Users.Where(item => item.Id == _adminId).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Role, role).SetProperty(item => item.IsActive, active));
         await Assert.ThrowsAsync<ContactFeedbackForbiddenException>(() => Reply(id, answer)); Assert.Equal(1, await _db.ContactReplies.CountAsync());
+    }
+
+    [Fact]
+    public async Task ServiceCanSaveAReplyWithOwnAuditIdentityAndOriginalRecipient()
+    {
+        var id = await Contact();
+        await _db.Users.Where(item => item.Id == _adminId).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Role, UserRoles.Service));
+        var receipt = await Reply(id); Assert.Equal(ContactEmailStatus.Queued, receipt!.Status);
+        var job = await _db.ContactReplies.AsNoTracking().SingleAsync();
+        Assert.Equal(_adminId, job.AdminUserId); Assert.Equal("original-contact@example.test", job.RecipientEmail);
     }
 
     [Fact]

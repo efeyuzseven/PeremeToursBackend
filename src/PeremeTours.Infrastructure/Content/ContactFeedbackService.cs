@@ -49,7 +49,8 @@ internal sealed class ContactFeedbackService(PeremeToursDbContext db, IOptions<M
     {
         var body = submission.Body.Trim();
         // Check current permissions even for a duplicate request; the API additionally validates the JWT stamp.
-        if (!await db.Users.AnyAsync(item => item.Id == adminId && item.IsActive && item.Role == UserRoles.Admin, cancellationToken))
+        if (!await db.Users.AnyAsync(item => item.Id == adminId && item.IsActive && !item.IsDeleted
+            && (item.Role == UserRoles.Admin || item.Role == UserRoles.Service), cancellationToken))
             throw new ContactFeedbackForbiddenException();
         try
         {

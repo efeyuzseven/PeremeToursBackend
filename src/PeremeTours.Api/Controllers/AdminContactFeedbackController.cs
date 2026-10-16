@@ -9,7 +9,7 @@ using PeremeTours.Domain.Users;
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.CustomerSupport)]
 [Route("api/v1/admin/feedback")]
 public sealed class AdminContactFeedbackController(IContactFeedbackService service) : ControllerBase
 {

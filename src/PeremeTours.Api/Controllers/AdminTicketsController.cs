@@ -11,7 +11,7 @@ using PeremeTours.Infrastructure.Persistence;
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.CustomerSupport)]
 [Route("api/v1/admin/tickets")]
 public sealed class AdminTicketsController(ITicketService ticketService, ITicketCancellationService cancellationService, PeremeToursDbContext db)
     : ControllerBase
@@ -20,7 +20,8 @@ public sealed class AdminTicketsController(ITicketService ticketService, ITicket
     public async Task<ActionResult<TicketCancellationSummary>> Cancel(Guid id, CancelTicketRequest request, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var actorId)
-            || !await db.Users.AnyAsync(item => item.Id == actorId && item.IsActive && item.Role == UserRoles.Admin, cancellationToken))
+            || !await db.Users.AnyAsync(item => item.Id == actorId && item.IsActive && !item.IsDeleted
+                && (item.Role == UserRoles.Admin || item.Role == UserRoles.Service), cancellationToken))
             return Forbid();
         Response.Headers.CacheControl = "no-store";
         try
@@ -47,9 +48,14 @@ public sealed class AdminTicketsController(ITicketService ticketService, ITicket
     [ProducesResponseType<IReadOnlyList<TicketSummary>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TicketSummary>>> List(
         CancellationToken cancellationToken
-    ) => Ok(await ticketService.ListAsync(cancellationToken));
+    )
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await ticketService.ListAsync(cancellationToken));
+    }
 
     [HttpPost]
+    [Authorize(Roles = UserRoles.Admin)]
     [ProducesResponseType<TicketSummary>(StatusCodes.Status201Created)]
     public async Task<ActionResult<TicketSummary>> Create(
         CreateTicketRequest request,
@@ -78,6 +84,7 @@ public sealed class AdminTicketsController(ITicketService ticketService, ITicket
     }
 
     [HttpPatch("{id:guid}")]
+    [Authorize(Roles = UserRoles.Admin)]
     [ProducesResponseType<TicketSummary>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TicketSummary>> Update(

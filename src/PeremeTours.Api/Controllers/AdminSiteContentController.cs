@@ -9,7 +9,7 @@ using PeremeTours.Domain.Users;
 namespace PeremeTours.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = UserRoles.Admin)]
+[Authorize(Roles = UserRoles.ContentManagers)]
 [Route("api/v1/admin/site-content")]
 public sealed class AdminSiteContentController(
     IHomepageContentService homepageContentService, IHomepageImageService images
