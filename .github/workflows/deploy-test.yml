@@ -92,7 +92,8 @@ jobs:
             --task-definition "$CURRENT_TASK_DEFINITION" \
             --query taskDefinition > current-task-definition.json
 
-          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" '
+          RECAPTCHA_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/ZIRAAT_POS-zOxbsJ:recaptchaSecretKey::"
+          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" --arg recaptchaSecret "$RECAPTCHA_SECRET_REF" '
             {
               family,
               taskRoleArn,
@@ -110,7 +111,13 @@ jobs:
             | .containerDefinitions |= map(
                 if .name == $container then
                   .image = $image
-                  | .secrets = ((.secrets // []) | map(select(.name != "Database__Password")))
+                  | .secrets = (
+                      ((.secrets // []) | map(select(
+                        .name != "Database__Password"
+                        and .name != "Payments__Protection__RecaptchaSecretKey"
+                      )))
+                      + [{name: "Payments__Protection__RecaptchaSecretKey", valueFrom: $recaptchaSecret}]
+                    )
                   | .environment = (
                       ((.environment // []) | map(select(
                         .name != "MailSettings__WebsiteUrl"
@@ -118,8 +125,10 @@ jobs:
                         and .name != "Payments__Ziraat__AllowedFrontendOrigins__0"
                         and .name != "Payments__Ziraat__AllowedFrontendOrigins__1"
                         and .name != "DeploymentBootstrap__SeedDemoTickets"
+                        and .name != "Payments__Protection__RecaptchaEnabled"
                       )))
                       + [
+                          {name: "Payments__Protection__RecaptchaEnabled", value: "true"},
                           {name: "MailSettings__WebsiteUrl", value: "https://pereme.com.tr"},
                           {name: "Payments__Ziraat__FrontendOrigin", value: "https://pereme.com.tr"},
                           {name: "Payments__Ziraat__AllowedFrontendOrigins__0", value: "https://www.pereme.com.tr"},
