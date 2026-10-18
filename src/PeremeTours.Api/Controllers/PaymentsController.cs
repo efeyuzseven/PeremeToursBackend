@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -18,10 +19,24 @@ namespace PeremeTours.Api.Controllers;
 public sealed class PaymentsController(
     ITourPaymentService paymentService,
     ThreeDSecureFrameStore frameStore,
+    IRecaptchaVerifier recaptchaVerifier,
+    PaymentAttemptGuard attemptGuard,
     IOptions<ZiraatPosOptions> options,
     ILogger<PaymentsController> logger
 ) : ControllerBase
 {
+    private static readonly Action<ILogger, Exception?> LogCaptchaRejected =
+        LoggerMessage.Define(
+            LogLevel.Warning,
+            new EventId(4003, nameof(LogCaptchaRejected)),
+            "Payment start rejected because the security check failed."
+        );
+    private static readonly Action<ILogger, PaymentAttemptLimit, Exception?> LogAttemptLimited =
+        LoggerMessage.Define<PaymentAttemptLimit>(
+            LogLevel.Warning,
+            new EventId(4004, nameof(LogAttemptLimited)),
+            "Payment start rejected by attempt limit. Limit={Limit}"
+        );
     private static readonly Action<ILogger, Exception?> LogInitializeFailed =
         LoggerMessage.Define(
             LogLevel.Warning,
@@ -71,6 +86,26 @@ public sealed class PaymentsController(
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Eksik bilet veya yolcu bilgisi");
         try
         {
+            if (!await recaptchaVerifier.VerifyAsync(
+                    request.RecaptchaToken, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken))
+            {
+                LogCaptchaRejected(logger, null);
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Güvenlik doğrulaması geçersiz",
+                    detail: "Lütfen güvenlik doğrulamasını yeniden tamamlayın.");
+            }
+
+            var limit = attemptGuard.TryAcquire(request.CustomerEmail, request.Card.Number, out var retryAfter);
+            if (limit != PaymentAttemptLimit.None)
+            {
+                LogAttemptLimited(logger, limit, null);
+                Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds))
+                    .ToString(CultureInfo.InvariantCulture);
+                return Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Çok fazla ödeme denemesi",
+                    detail: limit == PaymentAttemptLimit.SiteWide
+                        ? "Ödeme sistemimiz şu anda yoğun. Lütfen kısa bir süre sonra tekrar deneyin."
+                        : "Bu bilgilerle kısa sürede çok fazla ödeme denemesi yapıldı. Lütfen daha sonra tekrar deneyin.");
+            }
+
             Guid? userId = Guid.TryParse(
                 User.FindFirstValue(ClaimTypes.NameIdentifier),
                 out var parsedUserId
@@ -302,6 +337,9 @@ public sealed class StartTourPaymentRequest
 
     [Required]
     public required PaymentCardRequest Card { get; init; }
+
+    [StringLength(4096)]
+    public string? RecaptchaToken { get; init; }
 }
 
 public sealed class PaymentCardRequest

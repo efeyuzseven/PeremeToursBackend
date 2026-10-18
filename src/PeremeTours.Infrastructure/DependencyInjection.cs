@@ -111,6 +111,15 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
             client.MaxResponseContentBufferSize = 1_000_000;
         });
+        services.Configure<PaymentProtectionOptions>(
+            configuration.GetSection(PaymentProtectionOptions.SectionName)
+        );
+        services.AddSingleton<PaymentAttemptGuard>();
+        services.AddHttpClient<IRecaptchaVerifier, RecaptchaVerifier>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.MaxResponseContentBufferSize = 16_384;
+        });
         services.AddHttpClient<CancelledPaymentReconciler>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
