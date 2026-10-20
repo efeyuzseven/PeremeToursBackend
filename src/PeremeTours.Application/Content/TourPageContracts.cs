@@ -19,7 +19,9 @@ public sealed record TourPageLanguageContent(
     [Required, StringLength(200)] string ToursHeading,
     [Required, StringLength(320)] string SeoDescription,
     // Null means "never edited" so the site shows its default booking card notes; an empty list hides them.
-    [MaxLength(4)] IReadOnlyList<TourPageBookingNote>? BookingNotes = null
+    [MaxLength(4)] IReadOnlyList<TourPageBookingNote>? BookingNotes = null,
+    // Tour detail pages: free text with "## heading", "- item", "+ included", "x excluded" lines, rendered as plain text (never HTML).
+    [StringLength(20000)] string? Details = null
 );
 
 public sealed record TourPageBookingNote(

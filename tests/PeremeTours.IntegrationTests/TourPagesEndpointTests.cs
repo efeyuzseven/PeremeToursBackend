@@ -82,6 +82,7 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("null-booking-note")]
     [InlineData("booking-note-without-title")]
     [InlineData("long-booking-note")]
+    [InlineData("long-details")]
     public async Task InvalidPageDocumentsReturnValidationErrors(string invalid)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -103,6 +104,7 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "too-many-booking-notes": node["tr"]!["bookingNotes"] = new JsonArray(Enumerable.Range(0, 5).Select(_ => (JsonNode)new JsonObject { ["title"] = "Not" }).ToArray()); break;
             case "null-booking-note": node["tr"]!["bookingNotes"] = new JsonArray((JsonNode?)null); break;
             case "booking-note-without-title": node["en"]!["bookingNotes"] = new JsonArray(new JsonObject { ["text"] = "Text" }); break;
+            case "long-details": node["tr"]!["details"] = new string('x', 20001); break;
             case "long-booking-note": node["tr"]!["bookingNotes"] = new JsonArray(new JsonObject { ["title"] = "Not", ["text"] = new string('x', 301) }); break;
         }
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(node) };
@@ -114,9 +116,11 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task IncludedSectionsAndBookingNotesAreSavedAndOptional()
     {
+        const string DetailsText = "## Dahil olanlar\n+ Akşam yemeği\nx Bahşiş";
         var document = Document() with
         {
-            Tr = Document().Tr with { BookingNotes = [new("Ücretsiz iptal", "24 saat öncesine kadar"), new("Anında onay", null)] },
+            Tr = Document().Tr with { BookingNotes = [new("Ücretsiz iptal", "24 saat öncesine kadar"), new("Anında onay", null)],
+                Details = DetailsText },
             En = Document().En with { BookingNotes = [] },
             Sections = [new("included", "included", "white", true, [], new("Dahil olanlar", null, ["Akşam yemeği"], ["Ekstra içecekler"]),
                 new("What's included", null, ["Dinner"]))],
@@ -128,6 +132,8 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
         var saved = (await response.Content.ReadFromJsonAsync<TourPageItem>())!.Document;
         Assert.Equal(["Ücretsiz iptal", "Anında onay"], saved.Tr.BookingNotes!.Select(note => note.Title));
         Assert.Empty(saved.En.BookingNotes!);
+        Assert.Equal(DetailsText, saved.Tr.Details);
+        Assert.Null(saved.En.Details);
         var section = Assert.Single(saved.Sections);
         Assert.Equal(["Ekstra içecekler"], section.Tr.ExcludedItems!);
         Assert.Null(section.En.ExcludedItems);
