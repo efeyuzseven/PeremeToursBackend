@@ -104,7 +104,7 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "too-many-booking-notes": node["tr"]!["bookingNotes"] = new JsonArray(Enumerable.Range(0, 5).Select(_ => (JsonNode)new JsonObject { ["title"] = "Not" }).ToArray()); break;
             case "null-booking-note": node["tr"]!["bookingNotes"] = new JsonArray((JsonNode?)null); break;
             case "booking-note-without-title": node["en"]!["bookingNotes"] = new JsonArray(new JsonObject { ["text"] = "Text" }); break;
-            case "long-details": node["tr"]!["details"] = new string('x', 20001); break;
+            case "long-details": node["tr"]!["details"] = new string('x', 50001); break;
             case "long-booking-note": node["tr"]!["bookingNotes"] = new JsonArray(new JsonObject { ["title"] = "Not", ["text"] = new string('x', 301) }); break;
         }
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(node) };

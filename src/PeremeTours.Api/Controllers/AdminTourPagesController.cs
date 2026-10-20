@@ -32,7 +32,8 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
     }
 
     [HttpPut("{key}")]
-    [RequestSizeLimit(128 * 1024)]
+    // Two languages of up to 50,000 characters each (multi-byte UTF-8) plus the rest of the page.
+    [RequestSizeLimit(512 * 1024)]
     public async Task<ActionResult<TourPageItem>> Update(string key, TourPageDocument request, CancellationToken cancellationToken)
     {
         if (request.Sections.Any(section => section is null))
