@@ -44,10 +44,13 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
             foreach (var section in request.Sections)
             {
                 if (section.ImageUrls.Any(url => !IsImageUrl(url))) ModelState.AddModelError("sections", "Görsel bağlantısı geçersiz.");
-                if (section.Tr.Items.Concat(section.En.Items).Any(item => item is null || item.Length > 400))
+                if (section.Tr.Items.Concat(section.En.Items).Concat(section.Tr.ExcludedItems ?? []).Concat(section.En.ExcludedItems ?? [])
+                    .Any(item => item is null || item.Length > 400))
                     ModelState.AddModelError("sections", "Öne çıkan bir madde en fazla 400 karakter olabilir.");
             }
         }
+        if ((request.Tr.BookingNotes ?? []).Concat(request.En.BookingNotes ?? []).Any(note => note is null))
+            ModelState.AddModelError("bookingNotes", "Rezervasyon kartı notu eksik olamaz.");
         if (!string.IsNullOrEmpty(request.HeroImageUrl) && !IsImageUrl(request.HeroImageUrl))
             ModelState.AddModelError("heroImageUrl", "Görsel bağlantısı geçersiz.");
         if (!ModelState.IsValid) return ValidationProblem(ModelState);

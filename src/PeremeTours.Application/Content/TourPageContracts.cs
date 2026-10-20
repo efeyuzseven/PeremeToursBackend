@@ -17,12 +17,19 @@ public sealed record TourPageLanguageContent(
     [Required, StringLength(3000)] string Intro,
     [Required, StringLength(80)] string BookingLabel,
     [Required, StringLength(200)] string ToursHeading,
-    [Required, StringLength(320)] string SeoDescription
+    [Required, StringLength(320)] string SeoDescription,
+    // Null means "never edited" so the site shows its default booking card notes; an empty list hides them.
+    [MaxLength(4)] IReadOnlyList<TourPageBookingNote>? BookingNotes = null
+);
+
+public sealed record TourPageBookingNote(
+    [Required, StringLength(80)] string Title,
+    [StringLength(300)] string? Text
 );
 
 public sealed record TourPageSection(
     [Required, StringLength(80), RegularExpression("^[a-zA-Z0-9_-]+$")] string Id,
-    [Required, RegularExpression("^(text|highlights|gallery)$")] string Type,
+    [Required, RegularExpression("^(text|highlights|included|gallery)$")] string Type,
     [Required, RegularExpression("^(white|blue)$")] string Background,
     bool IsVisible,
     [Required, MaxLength(6)] IReadOnlyList<string> ImageUrls,
@@ -33,7 +40,8 @@ public sealed record TourPageSection(
 public sealed record TourPageSectionLanguageContent(
     [Required, StringLength(200)] string Title,
     [StringLength(6000)] string? Body,
-    [Required, MaxLength(12)] IReadOnlyList<string> Items
+    [Required, MaxLength(12)] IReadOnlyList<string> Items,
+    [MaxLength(12)] IReadOnlyList<string>? ExcludedItems = null
 );
 
 public sealed record TourPageItem(string Key, string CategoryKey, int? ExternalTourId,

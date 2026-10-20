@@ -75,6 +75,13 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("too-many-sections")]
     [InlineData("too-many-images")]
     [InlineData("long-item")]
+    [InlineData("unknown-type")]
+    [InlineData("long-excluded-item")]
+    [InlineData("too-many-excluded-items")]
+    [InlineData("too-many-booking-notes")]
+    [InlineData("null-booking-note")]
+    [InlineData("booking-note-without-title")]
+    [InlineData("long-booking-note")]
     public async Task InvalidPageDocumentsReturnValidationErrors(string invalid)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -90,11 +97,40 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "too-many-sections": for (var i = 0; i < 8; i++) node["sections"]!.AsArray().Add(node["sections"]![0]!.DeepClone()); break;
             case "too-many-images": node["sections"]![0]!["imageUrls"] = new JsonArray(Enumerable.Range(0, 7).Select(_ => JsonValue.Create("/assets/test.webp")).ToArray()); break;
             case "long-item": node["sections"]![0]!["tr"]!["items"] = new JsonArray(new string('x', 401)); break;
+            case "unknown-type": node["sections"]![0]!["type"] = "html"; break;
+            case "long-excluded-item": node["sections"]![0]!["en"]!["excludedItems"] = new JsonArray(new string('x', 401)); break;
+            case "too-many-excluded-items": node["sections"]![0]!["tr"]!["excludedItems"] = new JsonArray(Enumerable.Range(0, 13).Select(_ => JsonValue.Create("x")).ToArray()); break;
+            case "too-many-booking-notes": node["tr"]!["bookingNotes"] = new JsonArray(Enumerable.Range(0, 5).Select(_ => (JsonNode)new JsonObject { ["title"] = "Not" }).ToArray()); break;
+            case "null-booking-note": node["tr"]!["bookingNotes"] = new JsonArray((JsonNode?)null); break;
+            case "booking-note-without-title": node["en"]!["bookingNotes"] = new JsonArray(new JsonObject { ["text"] = "Text" }); break;
+            case "long-booking-note": node["tr"]!["bookingNotes"] = new JsonArray(new JsonObject { ["title"] = "Not", ["text"] = new string('x', 301) }); break;
         }
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(node) };
         request.Headers.Add("X-Test-Role", "Admin");
         using var response = await _client.SendAsync(request);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IncludedSectionsAndBookingNotesAreSavedAndOptional()
+    {
+        var document = Document() with
+        {
+            Tr = Document().Tr with { BookingNotes = [new("Ücretsiz iptal", "24 saat öncesine kadar"), new("Anında onay", null)] },
+            En = Document().En with { BookingNotes = [] },
+            Sections = [new("included", "included", "white", true, [], new("Dahil olanlar", null, ["Akşam yemeği"], ["Ekstra içecekler"]),
+                new("What's included", null, ["Dinner"]))],
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(document) };
+        request.Headers.Add("X-Test-Role", "Admin");
+        using var response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = (await response.Content.ReadFromJsonAsync<TourPageItem>())!.Document;
+        Assert.Equal(["Ücretsiz iptal", "Anında onay"], saved.Tr.BookingNotes!.Select(note => note.Title));
+        Assert.Empty(saved.En.BookingNotes!);
+        var section = Assert.Single(saved.Sections);
+        Assert.Equal(["Ekstra içecekler"], section.Tr.ExcludedItems!);
+        Assert.Null(section.En.ExcludedItems);
     }
 
     [Fact]
