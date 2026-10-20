@@ -32,12 +32,14 @@ public sealed record TourPageBookingNote(
 
 public sealed record TourPageSection(
     [Required, StringLength(80), RegularExpression("^[a-zA-Z0-9_-]+$")] string Id,
-    [Required, RegularExpression("^(text|highlights|included|gallery)$")] string Type,
+    [Required, RegularExpression("^(text|highlights|included|gallery|map)$")] string Type,
     [Required, RegularExpression("^(white|blue)$")] string Background,
     bool IsVisible,
     [Required, MaxLength(6)] IReadOnlyList<string> ImageUrls,
     [Required] TourPageSectionLanguageContent Tr,
-    [Required] TourPageSectionLanguageContent En
+    [Required] TourPageSectionLanguageContent En,
+    // Map sections only: a Google Maps embed URL (https://www.google.com/maps/embed?...).
+    [StringLength(2000)] string? MapUrl = null
 );
 
 public sealed record TourPageSectionLanguageContent(

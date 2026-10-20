@@ -45,6 +45,8 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
             foreach (var section in request.Sections)
             {
                 if (section.ImageUrls.Any(url => !IsImageUrl(url))) ModelState.AddModelError("sections", "Görsel bağlantısı geçersiz.");
+                if (section.Type == "map" ? !IsMapEmbedUrl(section.MapUrl) : section.MapUrl is not null)
+                    ModelState.AddModelError("sections", "Harita için Google Haritalar yerleştirme bağlantısı gereklidir.");
                 if (section.Tr.Items.Concat(section.En.Items).Concat(section.Tr.ExcludedItems ?? []).Concat(section.En.ExcludedItems ?? [])
                     .Any(item => item is null || item.Length > 400))
                     ModelState.AddModelError("sections", "Öne çıkan bir madde en fazla 400 karakter olabilir.");
@@ -87,6 +89,13 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
     }
 
     private ObjectResult CatalogUnavailable() => Problem(statusCode: 503, title: "Tur bilgileri şu anda alınamıyor.");
+
+    // Only Google Maps embeds may be framed on the public site.
+    private static bool IsMapEmbedUrl(string? value) => value is { Length: > 0 and <= 2000 }
+        && Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+        && uri.Host == "www.google.com" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo)
+        && uri.AbsolutePath.StartsWith("/maps/embed", StringComparison.Ordinal)
+        && !value.Contains('\\') && !value.Contains('\r') && !value.Contains('\n') && !value.Contains('"');
 
     private static bool IsImageUrl(string? value) => value is { Length: > 0 and <= 2000 }
         && (value.StartsWith("/assets/", StringComparison.Ordinal) || value.StartsWith("/api/v1/tours/", StringComparison.Ordinal)
