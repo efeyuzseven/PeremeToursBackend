@@ -15,8 +15,9 @@ public sealed class MailOptions
     public string SenderEmail { get; set; } = string.Empty;
     public string SenderName { get; set; } = "Dentur Pereme";
     public string WebsiteUrl { get; set; } = "https://pereme.com.tr";
-    public string ReservationRecipient { get; set; } = "reservation@pereme.com.tr";
-    public string BosphorusRecipient { get; set; } = "mcanerdinc@denturavrasya.com";
-    public string SunsetDaytimeRecipient { get; set; } = "omacit@pereme.com.tr";
+    // Defaults live here, not in appsettings: the configuration binder appends configured array items to these.
+    public string[] TurkishNightRecipients { get; set; } = ["skurt@pereme.com.tr", "eakyuz@pereme.com.tr", "reservation@pereme.com.tr"];
+    public string[] BosphorusRecipients { get; set; } = ["mcanerdinc@pereme.com.tr"];
+    public string[] SunsetDaytimeRecipients { get; set; } = ["omacit@pereme.com.tr", "dpardun@pereme.com.tr"];
     public string[] ContactRecipients { get; set; } = ["eyilmaz@denturavrasya.com", "uakseloglu@denturavrasya.com"];
 }

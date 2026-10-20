@@ -298,14 +298,15 @@ doğrulanmadıysa e-postada yalnızca ödeme alındığı ve biletlerin kontrol 
 PNR sadece `Issued` durumda gösterilir; kimlik, pasaport, doğum tarihi, kart ve CVC mailde yer almaz.
 
 Yeni başarılı bilet kesimleri ayrıca bağımsız `ReservationNotifications` kuyruğuna alınır:
-`reservation@pereme.com.tr` yalnızca `turkish-night` (Türk Gecesi),
-`mcanerdinc@denturavrasya.com` yalnızca `bosphorus` (Boğaz Turu),
-`omacit@pereme.com.tr` ise `sunset` ve `daytime` kategorilerini alır.
+`skurt@pereme.com.tr`, `eakyuz@pereme.com.tr` ve `reservation@pereme.com.tr` yalnızca `turkish-night` (Türk Gecesi),
+`mcanerdinc@pereme.com.tr` yalnızca `bosphorus` (Boğaz Turu),
+`omacit@pereme.com.tr` ve `dpardun@pereme.com.tr` ise `sunset` ve `daytime` kategorilerini alır.
 Bilinmeyen veya boş kategori iç bildirim oluşturmaz; tur adına bakarak alıcı tahmin edilmez.
 Kategori ve bilet tipi ödeme başlangıcındaki
 güncel sunucu fiyat sorgusundan saklanır; düzenlenebilir tur adına göre yönlendirme yapılmaz.
-Alıcılar sırasıyla `MailSettings:ReservationRecipient`, `MailSettings:BosphorusRecipient` ve `MailSettings:SunsetDaytimeRecipient`
-ile ayarlanır. Her alıcıya ayrı HTML/düz metin maili gönderilir; müşteri mailine CC/BCC eklenmez.
+Alıcı listeleri sırasıyla `MailSettings:TurkishNightRecipients`, `MailSettings:BosphorusRecipients` ve
+`MailSettings:SunsetDaytimeRecipients` dizileridir; varsayılanlar `MailOptions` içindedir (yapılandırılan dizi öğeleri
+varsayılanlara eklenir, yerine geçmez). Her alıcıya ayrı HTML/düz metin maili gönderilir; müşteri mailine CC/BCC eklenmez.
 İç bildirimde rezervasyon, tur, kalkış, kişi sayısı, iletişim, bilet tipi, PNR ve tutar özeti bulunur;
 yolcu kimliği, pasaport, doğum tarihi ve kart bilgileri bulunmaz. Alıcı başına tekil outbox,
 atomik worker sahiplenmesi, sınırlı güvenli tekrar ve belirsiz gönderimde otomatik tekrar etmeme

@@ -328,11 +328,11 @@ public sealed class TourPaymentServiceTests : IDisposable
     };
 
     [Theory]
-    [InlineData(TourCategoryKeys.TurkishNight, "reservation@pereme.com.tr")]
-    [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@denturavrasya.com")]
-    [InlineData(TourCategoryKeys.Sunset, "omacit@pereme.com.tr")]
-    [InlineData(TourCategoryKeys.Daytime, "omacit@pereme.com.tr")]
-    public async Task SuccessfulIssuanceQueuesCorrectStaffRecipientsOnlyOnce(string category, string expectedRecipient)
+    [InlineData(TourCategoryKeys.TurkishNight, "skurt@pereme.com.tr,eakyuz@pereme.com.tr,reservation@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.Sunset, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.Daytime, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
+    public async Task SuccessfulIssuanceQueuesCorrectStaffRecipientsOnlyOnce(string category, string expectedRecipients)
     {
         _booking.CategoryKey = category;
         var start = await _service.StartAsync(Command(), CancellationToken.None); _db.ChangeTracker.Clear();
@@ -340,7 +340,7 @@ public sealed class TourPaymentServiceTests : IDisposable
         Assert.True((await _service.CompleteAsync(Callback(start), CancellationToken.None)).IsSuccessful);
         await _service.CompleteAsync(Callback(start), CancellationToken.None);
         var notifications = await _db.ReservationNotifications.ToListAsync();
-        Assert.Equal(expectedRecipient, Assert.Single(notifications).RecipientEmail);
+        Assert.Equal(expectedRecipients.Split(',').Order(), notifications.Select(item => item.RecipientEmail).Order());
         Assert.All(notifications, item => Assert.Equal(ReservationNotificationStatus.Queued, item.Status));
         Assert.Single(await _db.PaymentEmails.ToListAsync());
         Assert.Equal(1, _bank.AuthCalls); Assert.Equal(1, _sales.Calls);

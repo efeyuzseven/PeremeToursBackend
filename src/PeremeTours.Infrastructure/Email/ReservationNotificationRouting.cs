@@ -9,32 +9,33 @@ internal static class ReservationNotificationRouting
     {
         if (ticket.PaymentStatus != TicketPaymentStatus.Paid || ticket.TicketingStatus != TicketingStatus.Issued
             || ticket.Status != TicketStatus.Confirmed || ticket.Cancellation is not null) return [];
-        var recipient = RecipientFor(ticket.TourCategoryKey, options);
-        if (recipient is null) return [];
-        return [new ReservationNotification
+        return RecipientsFor(ticket.TourCategoryKey, options).Select(recipient => new ReservationNotification
             {
                 Id = Guid.NewGuid(), TicketId = ticket.Id, RecipientEmail = recipient,
                 Status = ReservationNotificationStatus.Queued, CreatedAtUtc = now.UtcDateTime,
                 NextAttemptAtUtc = now.UtcDateTime,
-            }];
+            }).ToList();
     }
 
     public static bool IsCurrentRecipient(ReservationNotification notification, MailOptions options)
     {
-        var expected = RecipientFor(notification.Ticket.TourCategoryKey, options);
-        return expected is not null && string.Equals(expected, notification.RecipientEmail.Trim(), StringComparison.OrdinalIgnoreCase);
+        var recipient = notification.RecipientEmail.Trim();
+        return RecipientsFor(notification.Ticket.TourCategoryKey, options)
+            .Any(expected => string.Equals(expected, recipient, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string? RecipientFor(string? category, MailOptions options)
+    private static List<string> RecipientsFor(string? category, MailOptions options)
     {
         // Use only the trusted category snapshot. Editable tour names cannot select a recipient.
-        var recipient = category switch
+        var recipients = category switch
         {
-            TourCategoryKeys.TurkishNight => options.ReservationRecipient,
-            TourCategoryKeys.Bosphorus => options.BosphorusRecipient,
-            TourCategoryKeys.Sunset or TourCategoryKeys.Daytime => options.SunsetDaytimeRecipient,
-            _ => null,
+            TourCategoryKeys.TurkishNight => options.TurkishNightRecipients,
+            TourCategoryKeys.Bosphorus => options.BosphorusRecipients,
+            TourCategoryKeys.Sunset or TourCategoryKeys.Daytime => options.SunsetDaytimeRecipients,
+            _ => [],
         };
-        return string.IsNullOrWhiteSpace(recipient) ? null : recipient.Trim().ToLowerInvariant();
+        // One outbox row per address: (TicketId, RecipientEmail) is unique, so duplicates are collapsed.
+        return recipients.Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim().ToLowerInvariant()).Distinct().ToList();
     }
 }
