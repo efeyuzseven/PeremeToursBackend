@@ -38,7 +38,7 @@ public sealed record TourPageSection(
     [Required, MaxLength(6)] IReadOnlyList<string> ImageUrls,
     [Required] TourPageSectionLanguageContent Tr,
     [Required] TourPageSectionLanguageContent En,
-    // Map sections only: a Google Maps embed URL (https://www.google.com/maps/embed?...).
+    // Map sections only (id "meeting-point", "route" or "service-point"): a Google Maps embed URL (https://www.google.com/maps/embed?...).
     [StringLength(2000)] string? MapUrl = null
 );
 

@@ -89,6 +89,7 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("map-not-embed")]
     [InlineData("map-javascript")]
     [InlineData("map-url-on-text-section")]
+    [InlineData("map-unknown-id")]
     public async Task InvalidPageDocumentsReturnValidationErrors(string invalid)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -111,11 +112,12 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "null-booking-note": node["tr"]!["bookingNotes"] = new JsonArray((JsonNode?)null); break;
             case "booking-note-without-title": node["en"]!["bookingNotes"] = new JsonArray(new JsonObject { ["text"] = "Text" }); break;
             case "long-details": node["tr"]!["details"] = new string('x', 50001); break;
-            case "map-without-url": node["sections"]![0]!["type"] = "map"; break;
-            case "map-other-host": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["mapUrl"] = "https://evil.example/maps/embed?pb=1"; break;
-            case "map-http": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["mapUrl"] = "http://www.google.com/maps/embed?pb=1"; break;
-            case "map-not-embed": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["mapUrl"] = "https://www.google.com/search?q=x"; break;
-            case "map-javascript": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["mapUrl"] = "javascript:alert(1)"; break;
+            case "map-without-url": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; break;
+            case "map-other-host": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "https://evil.example/maps/embed?pb=1"; break;
+            case "map-http": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "http://www.google.com/maps/embed?pb=1"; break;
+            case "map-not-embed": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "https://www.google.com/search?q=x"; break;
+            case "map-javascript": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "javascript:alert(1)"; break;
+            case "map-unknown-id": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["mapUrl"] = "https://www.google.com/maps/embed?pb=1"; break;
             case "map-url-on-text-section": node["sections"]![0]!["mapUrl"] = "https://www.google.com/maps/embed?pb=1"; break;
             case "long-booking-note": node["tr"]!["bookingNotes"] = new JsonArray(new JsonObject { ["title"] = "Not", ["text"] = new string('x', 301) }); break;
         }
@@ -157,15 +159,18 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
         const string MapUrl = "https://www.google.com/maps/embed?pb=!1m18!1m12";
         var document = Document() with
         {
-            Sections = [new("map", "map", "white", true, [], new("Harita", "Kabataş iskelesi", []), new("Map", "Kabatas pier", []), MapUrl)],
+            Sections = [new("meeting-point", "map", "white", true, [], new("Buluşma noktası", "Kabataş iskelesi", []), new("Meeting point", "Kabatas pier", []), MapUrl),
+                new("route", "map", "white", true, [], new("Güzergah", null, []), new("Route", null, []), MapUrl),
+                new("service-point", "map", "white", false, [], new("Servis noktası", null, []), new("Shuttle point", null, []), MapUrl)],
         };
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(document) };
         request.Headers.Add("X-Test-Role", "Admin");
         using var response = await _client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var section = Assert.Single((await response.Content.ReadFromJsonAsync<TourPageItem>())!.Document.Sections);
-        Assert.Equal(MapUrl, section.MapUrl);
-        Assert.Equal("Kabataş iskelesi", section.Tr.Body);
+        var sections = (await response.Content.ReadFromJsonAsync<TourPageItem>())!.Document.Sections;
+        Assert.Equal(["meeting-point", "route", "service-point"], sections.Select(section => section.Id));
+        Assert.All(sections, section => Assert.Equal(MapUrl, section.MapUrl));
+        Assert.Equal("Kabataş iskelesi", sections[0].Tr.Body);
     }
 
     [Fact]

@@ -47,6 +47,8 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
                 if (section.ImageUrls.Any(url => !IsImageUrl(url))) ModelState.AddModelError("sections", "Görsel bağlantısı geçersiz.");
                 if (section.Type == "map" ? !IsMapEmbedUrl(section.MapUrl) : section.MapUrl is not null)
                     ModelState.AddModelError("sections", "Harita için Google Haritalar yerleştirme bağlantısı gereklidir.");
+                if (section.Type == "map" && !MapSectionIds.Contains(section.Id))
+                    ModelState.AddModelError("sections", "Harita yalnızca buluşma noktası, güzergah veya servis noktası olabilir.");
                 if (section.Tr.Items.Concat(section.En.Items).Concat(section.Tr.ExcludedItems ?? []).Concat(section.En.ExcludedItems ?? [])
                     .Any(item => item is null || item.Length > 400))
                     ModelState.AddModelError("sections", "Öne çıkan bir madde en fazla 400 karakter olabilir.");
@@ -89,6 +91,9 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
     }
 
     private ObjectResult CatalogUnavailable() => Problem(statusCode: 503, title: "Tur bilgileri şu anda alınamıyor.");
+
+    // A page has at most these three maps; the id says which one it is.
+    private static readonly HashSet<string> MapSectionIds = new(StringComparer.Ordinal) { "meeting-point", "route", "service-point" };
 
     // Only Google Maps embeds may be framed on the public site.
     private static bool IsMapEmbedUrl(string? value) => value is { Length: > 0 and <= 2000 }
