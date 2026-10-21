@@ -45,8 +45,13 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
             foreach (var section in request.Sections)
             {
                 if (section.ImageUrls.Any(url => !IsImageUrl(url))) ModelState.AddModelError("sections", "Görsel bağlantısı geçersiz.");
-                if (section.Type == "map" ? !IsMapEmbedUrl(section.MapUrl) : section.MapUrl is not null)
-                    ModelState.AddModelError("sections", "Harita için Google Haritalar yerleştirme bağlantısı gereklidir.");
+                var points = section.MapPoints ?? [];
+                if (points.Any(point => point is null))
+                    ModelState.AddModelError("sections", "Harita noktası eksik olamaz.");
+                else if (section.Type == "map"
+                    ? (section.MapUrl is not null && !IsMapEmbedUrl(section.MapUrl)) || (section.MapUrl is null && points.Count == 0)
+                    : section.MapUrl is not null || points.Count > 0)
+                    ModelState.AddModelError("sections", "Harita için en az bir nokta ya da geçerli bir Google Haritalar bağlantısı gereklidir.");
                 if (section.Type == "map" && !MapSectionIds.Contains(section.Id))
                     ModelState.AddModelError("sections", "Harita yalnızca buluşma noktası, güzergah veya servis noktası olabilir.");
                 if (section.Tr.Items.Concat(section.En.Items).Concat(section.Tr.ExcludedItems ?? []).Concat(section.En.ExcludedItems ?? [])

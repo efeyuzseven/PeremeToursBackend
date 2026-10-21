@@ -39,7 +39,18 @@ public sealed record TourPageSection(
     [Required] TourPageSectionLanguageContent Tr,
     [Required] TourPageSectionLanguageContent En,
     // Map sections only (id "meeting-point", "route" or "service-point"): a Google Maps embed URL (https://www.google.com/maps/embed?...).
-    [StringLength(2000)] string? MapUrl = null
+    [StringLength(2000)] string? MapUrl = null,
+    // Map sections only: pins drawn by the site itself, in order (a route connects them in this order).
+    [MaxLength(20)] IReadOnlyList<TourPageMapPoint>? MapPoints = null
+);
+
+public sealed record TourPageMapPoint(
+    [Range(-90, 90)] double Latitude,
+    [Range(-180, 180)] double Longitude,
+    [Required, StringLength(120)] string NameTr,
+    [StringLength(120)] string? NameEn,
+    [StringLength(200)] string? NoteTr,
+    [StringLength(200)] string? NoteEn
 );
 
 public sealed record TourPageSectionLanguageContent(

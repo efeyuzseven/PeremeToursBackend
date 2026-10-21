@@ -90,6 +90,12 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("map-javascript")]
     [InlineData("map-url-on-text-section")]
     [InlineData("map-unknown-id")]
+    [InlineData("map-point-latitude")]
+    [InlineData("map-point-longitude")]
+    [InlineData("map-point-without-name")]
+    [InlineData("map-null-point")]
+    [InlineData("map-too-many-points")]
+    [InlineData("map-points-on-text-section")]
     public async Task InvalidPageDocumentsReturnValidationErrors(string invalid)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -113,6 +119,12 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "booking-note-without-title": node["en"]!["bookingNotes"] = new JsonArray(new JsonObject { ["text"] = "Text" }); break;
             case "long-details": node["tr"]!["details"] = new string('x', 50001); break;
             case "map-without-url": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; break;
+            case "map-point-latitude": MapWithPoints(node, Point(91, 29, "Kabataş")); break;
+            case "map-point-longitude": MapWithPoints(node, Point(41, -181, "Kabataş")); break;
+            case "map-point-without-name": MapWithPoints(node, Point(41, 29, null)); break;
+            case "map-null-point": MapWithPoints(node, [null]); break;
+            case "map-too-many-points": MapWithPoints(node, Enumerable.Range(0, 21).Select(index => Point(41, 29, $"Durak {index}")).ToArray()); break;
+            case "map-points-on-text-section": node["sections"]![0]!["mapPoints"] = new JsonArray(Point(41, 29, "Kabataş")); break;
             case "map-other-host": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "https://evil.example/maps/embed?pb=1"; break;
             case "map-http": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "http://www.google.com/maps/embed?pb=1"; break;
             case "map-not-embed": node["sections"]![0]!["type"] = "map"; node["sections"]![0]!["id"] = "route"; node["sections"]![0]!["mapUrl"] = "https://www.google.com/search?q=x"; break;
@@ -171,6 +183,34 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
         Assert.Equal(["meeting-point", "route", "service-point"], sections.Select(section => section.Id));
         Assert.All(sections, section => Assert.Equal(MapUrl, section.MapUrl));
         Assert.Equal("Kabataş iskelesi", sections[0].Tr.Body);
+    }
+
+    [Fact]
+    public async Task MapSectionsWithPointsAreSavedInOrder()
+    {
+        var document = Document() with
+        {
+            Sections = [new("route", "map", "white", true, [], new("Güzergah", null, []), new("Route", null, []), null,
+                [new(41.0335, 29.0066, "Kabataş", "Kabatas", "Kalkış", "Departure"), new(41.0211, 29.0041, "Kız Kulesi", null, "Gezi", null)])],
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(document) };
+        request.Headers.Add("X-Test-Role", "Admin");
+        using var response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var points = Assert.Single((await response.Content.ReadFromJsonAsync<TourPageItem>())!.Document.Sections).MapPoints!;
+        Assert.Equal(["Kabataş", "Kız Kulesi"], points.Select(point => point.NameTr));
+        Assert.Equal(41.0211, points[1].Latitude);
+        Assert.Null(points[1].NameEn);
+    }
+
+    private static JsonObject Point(double latitude, double longitude, string? name) =>
+        new() { ["latitude"] = latitude, ["longitude"] = longitude, ["nameTr"] = name };
+
+    private static void MapWithPoints(JsonNode node, params JsonObject?[] points)
+    {
+        node["sections"]![0]!["type"] = "map";
+        node["sections"]![0]!["id"] = "route";
+        node["sections"]![0]!["mapPoints"] = new JsonArray(points.Select(point => (JsonNode?)point).ToArray());
     }
 
     [Fact]
