@@ -364,6 +364,8 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecr:BatchCheckLayerAvailability
+                  # Newer Docker clients read the manifest (BatchGetImage) during push.
+                  - ecr:BatchGetImage
                   - ecr:CompleteLayerUpload
                   - ecr:GetDownloadUrlForLayer
                   - ecr:InitiateLayerUpload
