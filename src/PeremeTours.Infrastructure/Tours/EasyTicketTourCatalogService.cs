@@ -151,6 +151,12 @@ public sealed class EasyTicketTourCatalogService(
     {
         await EnsureSupportedTourAsync(externalTourId, cancellationToken);
 
+        var cacheKey = string.Create(CultureInfo.InvariantCulture, $"easyticket:ports:v1:{externalTourId}");
+        if (cache.TryGetValue(cacheKey, out IReadOnlyList<TourPort>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
         try
         {
             var ports = await GetAsync<List<EasyTicketTourPort>>(
@@ -158,7 +164,7 @@ public sealed class EasyTicketTourCatalogService(
                 cancellationToken
             ) ?? [];
 
-            return ports
+            IReadOnlyList<TourPort> result = ports
                 .Where(port => port.Liman_Id > 0)
                 .OrderBy(port => port.Sira_No)
                 .Select(port => new TourPort(
@@ -167,6 +173,8 @@ public sealed class EasyTicketTourCatalogService(
                     port.Sira_No
                 ))
                 .ToList();
+            cache.Set(cacheKey, result, TimeSpan.FromMinutes(Math.Clamp(_options.CacheMinutes, 1, 60)));
+            return result;
         }
         catch (TourCatalogUnavailableException)
         {
@@ -196,6 +204,11 @@ public sealed class EasyTicketTourCatalogService(
     )
     {
         var tour = await EnsureSupportedTourAsync(externalTourId, cancellationToken);
+        var ports = await ListPortsAsync(externalTourId, cancellationToken);
+        if (ports.All(port => port.ExternalPortId != externalDeparturePortId))
+        {
+            return null;
+        }
 
         try
         {
@@ -229,17 +242,20 @@ public sealed class EasyTicketTourCatalogService(
                 ))
                 .ToList();
 
+            // The provider ignores kalkisLimanId and returns every port's trips, naming the
+            // port but not identifying it, so each trip is matched to the tour's ports by name.
             var departures = (detail.Seferler ?? [])
                 .Select(trip => new TourDeparture(
                     trip.Id,
-                    trip.Sefer_Id,
-                    trip.Kalkis_Liman_Id > 0 ? trip.Kalkis_Liman_Id : externalDeparturePortId,
+                    trip.Sefer_Id > 0 ? trip.Sefer_Id : trip.Id,
+                    ResolveTripPort(trip, ports, externalDeparturePortId),
                     (trip.Kalkis_Liman ?? trip.Kalkis_Liman_Adi)?.Trim() ?? string.Empty,
                     trip.Sefer_Tarihi.HasValue
                         ? DateOnly.FromDateTime(trip.Sefer_Tarihi.Value)
                         : null,
                     ParseTime(trip.Sefer_Saati)
                 ))
+                .Where(departure => departure.ExternalPortId == externalDeparturePortId)
                 .ToList();
 
             return new TourAvailability(
@@ -363,6 +379,25 @@ public sealed class EasyTicketTourCatalogService(
         }
 
         return builder.ToString();
+    }
+
+    // A trip without a recognisable port name keeps the requested port, as before.
+    private static int ResolveTripPort(
+        EasyTicketTourDetailTrip trip,
+        IReadOnlyList<TourPort> ports,
+        int requestedPortId
+    )
+    {
+        if (trip.Kalkis_Liman_Id > 0)
+        {
+            return trip.Kalkis_Liman_Id;
+        }
+
+        var name = Normalize(trip.Kalkis_Liman ?? trip.Kalkis_Liman_Adi);
+        var match = name.Length == 0
+            ? null
+            : ports.FirstOrDefault(port => Normalize(port.Name) == name);
+        return match?.ExternalPortId ?? requestedPortId;
     }
 
     private static TimeOnly? ParseTime(string? value) =>

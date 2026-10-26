@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: Pereme Tours Koçi Read API
+  version: 1.0.0
+  description: |
+    Koçi ajanının Pereme Tours (https://pereme.com.tr) turları, seferleri, fiyatları,
+    tur sayfası içerikleri ve sıkça sorulan sorular için kullanacağı okuma uç noktaları.
+    Bunlar sitenin kendisinin kullandığı herkese açık uç noktalardır; kimlik doğrulama
+    gerekmez ve hiçbiri rezervasyon, ödeme veya bilet işlemi yapmaz.
+    Kullanım kuralları için chatbot-integration.md dosyasına bakın.
+servers:
+  - url: https://api-peremetours-test.d1-tech.com/api/v1
+    description: Canlı ortam (adındaki "test" tarihsel bir addır, gerçek canlı servistir)
+paths:
+  /tours:
+    get:
+      operationId: listTours
+      summary: Sitede yayındaki turları listeler
+      description: |
+        Her tur bir kategoriye (bosphorus, turkish-night, sunset, daytime) bağlıdır.
+        titleTr/titleEn boşsa tur adı olarak `name` kullanılır. Turun site sayfası
+        https://pereme.com.tr/tur/{externalTourId} adresidir.
+      responses:
+        '200':
+          description: Yayındaki turlar, sitedeki sırasıyla
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tour' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /tours/{externalTourId}/ports:
+    get:
+      operationId: listTourPorts
+      summary: Turun kalkış iskelelerini listeler
+      parameters:
+        - $ref: '#/components/parameters/ExternalTourId'
+      responses:
+        '200':
+          description: Kalkış iskeleleri
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Port' }
+        '404': { description: 'Tur bulunamadı' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /tours/{externalTourId}/availability:
+    get:
+      operationId: getTourAvailability
+      summary: Bir iskeleden satışa açık sefer tarih/saatlerini ve bilet fiyatlarını verir
+      description: |
+        Canlı veridir, önbelleğe alınmamalıdır. Yalnızca bugünden (İstanbul saatiyle)
+        sonraki ve henüz kalkmamış seferler müşteriye sunulmalıdır. `departures` boşsa
+        veya `prices` boşsa tur şu anda satışta değildir. Yalnızca sorgulanan iskeleden
+        kalkan seferler döner; çok iskeleli turlarda her iskele ayrı sorgulanır. Tura ait
+        olmayan bir iskele için 404 döner.
+      parameters:
+        - $ref: '#/components/parameters/ExternalTourId'
+        - name: departurePortId
+          in: query
+          required: true
+          description: /ports yanıtındaki externalPortId
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Seferler ve fiyatlar
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Availability' }
+        '404': { description: 'Tur bulunamadı veya iskele bu tura ait değil' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /tours/quote:
+    post:
+      operationId: quoteTour
+      summary: Seçilen sefer ve bilet adetleri için güncel toplam fiyatı doğrular
+      description: |
+        Yalnızca fiyat kontrolüdür: yer ayırmaz, bilet kesmez, ödeme almaz. Toplam tutar
+        söylenecekse bu uç nokta çağrılmalı ve `amount` aynen kullanılmalıdır.
+        Kaynak IP başına dakikada 30 istek sınırı vardır; aşılırsa 429 döner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteRequest' }
+            example:
+              externalTourId: 2
+              externalDeparturePortId: 3
+              externalDepartureId: 8387
+              tourDate: '2026-10-24'
+              tickets:
+                - { externalPriceId: 145, quantity: 2 }
+                - { externalPriceId: 146, quantity: 1 }
+      responses:
+        '200':
+          description: Güncel fiyat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '400':
+          description: Seçim geçersiz (ör. sefer artık satışta değil); `detail` müşteriye söylenebilir
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { description: 'Tur bulunamadı' }
+        '429': { description: 'Dakikalık istek sınırı aşıldı' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /tour-pages/{key}:
+    get:
+      operationId: getTourPage
+      summary: Kategori veya tur sayfasının metin içeriğini verir
+      description: |
+        `key` kategori sayfaları için bosphorus, turkish-night, sunset veya daytime;
+        tek bir tur sayfası için tour-{externalTourId} (ör. tour-2) olur. Turun
+        programı, dahil olanlar, buluşma noktası gibi soruların cevabı buradadır:
+        `document.tr|en.intro`, `document.tr|en.details` (serbest metin, `##` ile
+        başlayan satırlar alt başlıktır), `document.tr|en.bookingNotes` ve
+        `document.sections[]` içindeki başlık, metin ve maddeler. Görsel ve harita
+        alanları sohbet için gerekmez.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            examples: [bosphorus, turkish-night, sunset, daytime, tour-2]
+      responses:
+        '200':
+          description: Sayfa içeriği (yalnızca görünür bölümler)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TourPage' }
+        '404': { description: 'Sayfa bulunamadı' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /faqs:
+    get:
+      operationId: listFaqs
+      summary: Sitede yayındaki sıkça sorulan soruları verir
+      responses:
+        '200':
+          description: Sorular ve cevaplar
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Faq' }
+components:
+  parameters:
+    ExternalTourId:
+      name: externalTourId
+      in: path
+      required: true
+      description: /tours yanıtındaki externalTourId
+      schema: { type: integer, minimum: 1 }
+  responses:
+    Unavailable:
+      description: Tur sağlayıcısına şu anda ulaşılamıyor; "sefer yok" olarak yorumlanmamalı
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Tour:
+      type: object
+      properties:
+        externalTourId: { type: integer, example: 2 }
+        externalCategoryId: { type: integer }
+        categoryKey: { type: string, enum: [bosphorus, turkish-night, sunset, daytime] }
+        categoryName: { type: string, example: Türk Gecesi }
+        name: { type: string, example: Türk Gecesi }
+        titleTr: { type: [string, 'null'] }
+        titleEn: { type: [string, 'null'] }
+        descriptionTr: { type: [string, 'null'] }
+        descriptionEn: { type: [string, 'null'] }
+        badgeTr: { type: [string, 'null'] }
+        badgeEn: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        sortOrder: { type: integer }
+    Port:
+      type: object
+      properties:
+        externalPortId: { type: integer, example: 3 }
+        name: { type: string, example: Kabataş }
+        displayOrder: { type: integer }
+    Price:
+      type: object
+      properties:
+        externalPriceId: { type: integer, example: 145, description: 'Quote isteğinde kullanılır' }
+        externalPassengerTypeId: { type: integer }
+        passengerType: { type: string, example: Alkolsüz, description: 'Bilet tipi (Türkçe)' }
+        passengerTypeEn: { type: [string, 'null'], example: Without Alcohol }
+        amount: { type: number, example: 1150, description: 'Kişi başı, KDV dahil' }
+        currency: { type: string, example: TRY }
+        taxRate: { type: integer, example: 20 }
+    Departure:
+      type: object
+      properties:
+        externalId: { type: integer, example: 8387, description: 'Quote isteğindeki externalDepartureId' }
+        externalTripId: { type: integer, description: 'Sağlayıcıdaki sefer kimliği (çoğu turda externalId ile aynı)' }
+        externalPortId: { type: integer, description: 'Seferin kalkış iskelesi (sorgulanan iskele)' }
+        portName: { type: string, example: Kabataş, description: 'Seferin kalkış iskelesinin adı' }
+        date: { type: [string, 'null'], format: date, example: '2026-10-24' }
+        time: { type: [string, 'null'], example: '20:30:00', description: 'İstanbul saati' }
+    Availability:
+      type: object
+      properties:
+        externalTourId: { type: integer }
+        tourName: { type: string }
+        categoryName: { type: string }
+        categoryKey: { type: [string, 'null'] }
+        saleType: { type: integer }
+        prices:
+          type: array
+          items: { $ref: '#/components/schemas/Price' }
+        departures:
+          type: array
+          items: { $ref: '#/components/schemas/Departure' }
+        bookingNote: { type: [string, 'null'], description: 'Müşteriye söylenmesi gereken not (Türkçe)' }
+        bookingNoteEn: { type: [string, 'null'] }
+    QuoteRequest:
+      type: object
+      required: [externalTourId, externalDeparturePortId, externalDepartureId, tourDate, tickets]
+      properties:
+        externalTourId: { type: integer }
+        externalDeparturePortId: { type: integer, description: 'Availability sorgusunda kullanılan departurePortId' }
+        externalDepartureId: { type: integer, description: 'departures[].externalId' }
+        tourDate: { type: string, format: date, description: 'departures[].date ile aynı olmalı' }
+        tickets:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            type: object
+            required: [externalPriceId, quantity]
+            properties:
+              externalPriceId: { type: integer }
+              quantity: { type: integer, minimum: 1, maximum: 12 }
+    Quote:
+      type: object
+      properties:
+        externalTourId: { type: integer }
+        tourName: { type: string }
+        externalDeparturePortId: { type: integer }
+        portName: { type: string }
+        externalDepartureId: { type: integer }
+        tourDate: { type: string, format: date }
+        departureTime: { type: string, example: '20:30:00' }
+        tickets:
+          type: array
+          items:
+            type: object
+            properties:
+              externalPriceId: { type: integer }
+              ticketType: { type: string }
+              ticketTypeEn: { type: [string, 'null'] }
+              quantity: { type: integer }
+              unitAmount: { type: number }
+              amount: { type: number }
+        guestCount: { type: integer }
+        amount: { type: number, description: 'Toplam tutar, KDV dahil' }
+        currency: { type: string }
+        checkedAtUtc: { type: string, format: date-time }
+        categoryKey: { type: [string, 'null'] }
+    TourPage:
+      type: object
+      properties:
+        key: { type: string }
+        categoryKey: { type: string }
+        externalTourId: { type: [integer, 'null'] }
+        sourceName: { type: string }
+        document:
+          type: object
+          properties:
+            tr: { $ref: '#/components/schemas/TourPageText' }
+            en: { $ref: '#/components/schemas/TourPageText' }
+            sections:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  type: { type: string, enum: [text, highlights, included, gallery, map] }
+                  tr: { $ref: '#/components/schemas/TourPageSectionText' }
+                  en: { $ref: '#/components/schemas/TourPageSectionText' }
+    TourPageText:
+      type: object
+      properties:
+        title: { type: string }
+        intro: { type: string }
+        details: { type: [string, 'null'] }
+        bookingNotes: { type: [string, 'null'] }
+    TourPageSectionText:
+      type: object
+      properties:
+        title: { type: string }
+        body: { type: [string, 'null'] }
+        items: { type: array, items: { type: string } }
+        excludedItems: { type: [array, 'null'], items: { type: string } }
+    Faq:
+      type: object
+      properties:
+        id: { type: integer }
+        questionTr: { type: string }
+        answerTr: { type: string }
+        questionEn: { type: string }
+        answerEn: { type: string }
+        sortOrder: { type: integer }
+    Problem:
+      type: object
+      properties:
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: [string, 'null'] }

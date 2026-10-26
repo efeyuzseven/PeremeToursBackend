@@ -52,6 +52,7 @@ public sealed class EasyTicketTourCatalogServiceTests
             ["/api/Data/turlar/2"] = "[]",
             ["/api/Data/turlar/7"] = """[{"id":77,"tur_Adi":"Sunset Cruise"}]""",
             ["/api/Data/turlar/9"] = "[]",
+            ["/api/Data/tur-limanlar/77"] = """[{"liman_Id":3,"adi":"Kabataş","sira_No":1}]""",
             ["/api/Data/tur-detay-full?turId=77&kalkisLimanId=3&tipi=2"] =
                 """{"turBilgisi":{"id":77,"tur_Adi":"Sunset Cruise","kategori":"Sunset","satis_Tipi":2},"fiyatlar":[{"fiyat_Id":8,"yolcu_Tipi_Id":1,"tl_Tekyon_Fiyat":950,"doviz_Tipi":"TL","kdv":20,"yolcu_Tipi":"Yetişkin"}],"seferler":[{"id":4,"sefer_Id":44,"kalkis_Liman_Id":3,"kalkis_Liman":"Kabataş","tarih":"2026-09-12","saat":"18:30"}]}""",
         });
@@ -80,6 +81,7 @@ public sealed class EasyTicketTourCatalogServiceTests
             ["/api/Data/turlar/2"] = "[]",
             ["/api/Data/turlar/7"] = """[{"id":77,"tur_Adi":"Sunset"}]""",
             ["/api/Data/turlar/9"] = "[]",
+            ["/api/Data/tur-limanlar/77"] = """[{"liman_Id":3,"adi":"Kabataş","sira_No":1}]""",
             ["/api/Data/tur-detay-full?turId=77&kalkisLimanId=3&tipi=2"] =
                 """{"turBilgisi":{"id":77,"tur_Adi":"Sunset","bilet_Notu":"Transfer yok","bilet_Notu_En":"No transfer"},"fiyatlar":[{"fiyat_Id":234,"yolcu_Tipi_Id":8,"tekyon_Fiyat":10,"tl_Tekyon_Fiyat":350,"doviz_Tipi":"EUR","yolcu_Tipi":"İkramsız","yolcu_Tipi_En":"Without refreshments"}],"seferler":[{"id":8707,"tarih":"2026-10-03T00:00:00","saat":"16:30:00","kalkis_Liman_Adi":null}]}""",
         });
@@ -94,6 +96,37 @@ public sealed class EasyTicketTourCatalogServiceTests
         Assert.Equal("Without refreshments", result.Prices.Single().PassengerTypeEn);
         Assert.Equal("No transfer", result.BookingNoteEn);
         Assert.Equal(TourCategoryKeys.Sunset, result.CategoryKey);
+    }
+
+    [Fact]
+    public async Task AvailabilityReturnsOnlyTheRequestedPortsTripsAndRejectsOtherPorts()
+    {
+        // The provider sends every port's trips for any kalkisLimanId and names the port without an id.
+        const string detail =
+            """{"turBilgisi":{"id":77,"tur_Adi":"Sunset","satis_Tipi":1},"fiyatlar":[],"seferler":[{"id":9863,"tarih":"2026-11-17T00:00:00","saat":"16:30:00","kalkis_Liman_Adi":"Kabataş"},{"id":9908,"tarih":"2026-11-17T00:00:00","saat":"16:40:00","kalkis_Liman_Adi":"Beşiktaş"}]}""";
+        var handler = new StubHttpMessageHandler(new Dictionary<string, string>
+        {
+            ["/api/Data/kategoriler"] = """[{"id":7,"kategori_Adi":"Sunset"}]""",
+            ["/api/Data/turlar/1"] = "[]",
+            ["/api/Data/turlar/2"] = "[]",
+            ["/api/Data/turlar/7"] = """[{"id":77,"tur_Adi":"Sunset"}]""",
+            ["/api/Data/turlar/9"] = "[]",
+            ["/api/Data/tur-limanlar/77"] = """[{"liman_Id":3,"adi":"Kabataş","sira_No":1},{"liman_Id":2,"adi":"Beşiktaş","sira_No":2}]""",
+            ["/api/Data/tur-detay-full?turId=77&kalkisLimanId=3&tipi=2"] = detail,
+            ["/api/Data/tur-detay-full?turId=77&kalkisLimanId=2&tipi=2"] = detail,
+        });
+        var service = CreateService(handler);
+
+        var kabatas = await service.GetAvailabilityAsync(77, 3, 2, CancellationToken.None);
+        var besiktas = await service.GetAvailabilityAsync(77, 2, 2, CancellationToken.None);
+        var unknown = await service.GetAvailabilityAsync(77, 999, 2, CancellationToken.None);
+
+        var kabatasTrip = Assert.Single(kabatas!.Departures);
+        Assert.Equal((9863, 3, "Kabataş", new TimeOnly(16, 30)), (kabatasTrip.ExternalId, kabatasTrip.ExternalPortId, kabatasTrip.PortName, kabatasTrip.Time!.Value));
+        var besiktasTrip = Assert.Single(besiktas!.Departures);
+        Assert.Equal((9908, 2, "Beşiktaş", new TimeOnly(16, 40)), (besiktasTrip.ExternalId, besiktasTrip.ExternalPortId, besiktasTrip.PortName, besiktasTrip.Time!.Value));
+        Assert.Equal(9908, besiktasTrip.ExternalTripId);
+        Assert.Null(unknown);
     }
 
     private static EasyTicketTourCatalogService CreateService(
