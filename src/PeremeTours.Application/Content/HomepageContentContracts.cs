@@ -6,8 +6,22 @@ public sealed record HomepageContentDocument(
     IReadOnlyList<string> InstagramUrls,
     IReadOnlyDictionary<string, string>? Images = null,
     IReadOnlyDictionary<string, string>? ImagePositions = null,
-    IReadOnlyList<string>? HiddenSections = null
+    IReadOnlyList<string>? HiddenSections = null,
+    IReadOnlyList<HomepageAnnouncement>? Announcements = null
 );
+
+// Homepage announcements, shown in the order they are listed.
+public sealed record HomepageAnnouncement(
+    string Id,
+    bool IsVisible,
+    string? Date,
+    string? ImageUrl,
+    string? LinkUrl,
+    HomepageAnnouncementText Tr,
+    HomepageAnnouncementText En
+);
+
+public sealed record HomepageAnnouncementText(string Title, string? Body, string? LinkLabel);
 
 public sealed record HomepageLanguageContent(
     HomepageHeroContent Hero,

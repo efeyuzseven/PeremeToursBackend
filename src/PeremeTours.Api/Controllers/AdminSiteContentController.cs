@@ -70,9 +70,10 @@ public sealed class AdminSiteContentController(
         if (request.ImagePositions is { } positions && (positions.Count > 8 || positions.Any(item => !imageKeys.Contains(item.Key)
                 || !new[] { "center", "top", "bottom", "left", "right" }.Contains(item.Value))))
             ModelState.AddModelError("imagePositions", "Görsel odak noktası geçersiz.");
-        if (request.HiddenSections is { } hidden && (hidden.Count > 6 || hidden.Distinct().Count() != hidden.Count
-                || hidden.Any(item => !new[] { "marquee", "services", "why", "stories", "final", "heroCard" }.Contains(item))))
+        if (request.HiddenSections is { } hidden && (hidden.Count > 7 || hidden.Distinct().Count() != hidden.Count
+                || hidden.Any(item => !new[] { "marquee", "services", "announcements", "why", "stories", "final", "heroCard" }.Contains(item))))
             ModelState.AddModelError("hiddenSections", "Bölüm görünürlüğü geçersiz.");
+        ValidateAnnouncements(request.Announcements);
         if (request.InstagramUrls is null) return Problem(statusCode: 400, title: "Instagram bağlantıları eksik olamaz.");
         if (request.InstagramUrls.Count > 6)
         {
@@ -204,6 +205,36 @@ public sealed class AdminSiteContentController(
             yield return benefit.Description;
         }
     }
+
+    private void ValidateAnnouncements(IReadOnlyList<HomepageAnnouncement>? announcements)
+    {
+        if (announcements is null) return;
+        const string Field = "announcements";
+        if (announcements.Count > 12) { ModelState.AddModelError(Field, "En fazla 12 duyuru eklenebilir."); return; }
+        if (announcements.Any(item => item is null || item.Tr is null || item.En is null))
+        {
+            ModelState.AddModelError(Field, "Duyuru bilgileri eksik olamaz.");
+            return;
+        }
+        if (announcements.Any(item => item.Id is null || !Regex.IsMatch(item.Id, "^[a-zA-Z0-9_-]{1,80}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50)))
+            || announcements.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != announcements.Count)
+            ModelState.AddModelError(Field, "Duyuru kimlikleri geçersiz veya tekrarlı.");
+        if (announcements.Any(item => string.IsNullOrWhiteSpace(item.Tr.Title)))
+            ModelState.AddModelError(Field, "Her duyurunun Türkçe başlığı olmalıdır.");
+        if (announcements.SelectMany(item => new[] { item.Tr, item.En }).Any(text => text.Title?.Length > 160 || text.Body?.Length > 1500 || text.LinkLabel?.Length > 60))
+            ModelState.AddModelError(Field, "Duyuru başlığı en fazla 160, metni en fazla 1500, bağlantı yazısı en fazla 60 karakter olabilir.");
+        if (announcements.Any(item => item.Date is not null && !DateOnly.TryParseExact(item.Date, "yyyy-MM-dd", out _)))
+            ModelState.AddModelError(Field, "Duyuru tarihi geçersiz.");
+        if (announcements.Any(item => item.ImageUrl is not null && (item.ImageUrl == "" || !IsImageUrl(item.ImageUrl))))
+            ModelState.AddModelError(Field, "Duyuru görseli geçersiz.");
+        if (announcements.Any(item => item.LinkUrl is not null && !IsAnnouncementLink(item.LinkUrl)))
+            ModelState.AddModelError(Field, "Duyuru bağlantısı https:// ile ya da site içi bir adresle (/...) başlamalıdır.");
+    }
+
+    // Absolute https links or paths on this site; never javascript:, data: or protocol-relative URLs.
+    private static bool IsAnnouncementLink(string value) => value is { Length: > 0 and <= 500 } && !value.Any(char.IsControl) && !value.Contains('\\')
+        && (value.StartsWith('/') && !value.StartsWith("//", StringComparison.Ordinal)
+            || Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps);
 
     private static bool IsInstagramUrl(string value)
     {

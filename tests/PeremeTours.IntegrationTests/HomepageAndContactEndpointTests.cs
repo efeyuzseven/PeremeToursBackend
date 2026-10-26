@@ -63,6 +63,9 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
     [InlineData("null-language")][InlineData("null-benefit")][InlineData("null-services")][InlineData("null-instagram")]
     [InlineData("external-image")][InlineData("javascript-image")][InlineData("traversal")][InlineData("invalid-focus")]
     [InlineData("long-text")][InlineData("invalid-section")][InlineData("long-extra")][InlineData("null-extra")]
+    [InlineData("announcement-null")][InlineData("announcement-no-title")][InlineData("announcement-long-body")][InlineData("announcement-bad-date")]
+    [InlineData("announcement-javascript-link")][InlineData("announcement-protocol-relative-link")][InlineData("announcement-external-image")]
+    [InlineData("announcement-duplicate-id")][InlineData("announcement-too-many")]
     public async Task UnsafeOrIncompleteDocumentsFailValidation(string mode)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -80,11 +83,41 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
             case "invalid-section": node["hiddenSections"] = new JsonArray("payments"); break;
             case "long-extra": node["tr"]!["texts"] = new JsonObject { ["hero.eyebrow"] = new string('x', 3001) }; break;
             case "null-extra": node["tr"]!["texts"] = new JsonObject { ["hero.eyebrow"] = null }; break;
+            case "announcement-null": node["announcements"] = new JsonArray((JsonNode?)null); break;
+            case "announcement-no-title": node["announcements"] = Announcements(Announcement() with { Tr = new(" ", null, null) }); break;
+            case "announcement-long-body": node["announcements"] = Announcements(Announcement() with { En = new("Title", new string('x', 1501), null) }); break;
+            case "announcement-bad-date": node["announcements"] = Announcements(Announcement() with { Date = "26.10.2026" }); break;
+            case "announcement-javascript-link": node["announcements"] = Announcements(Announcement() with { LinkUrl = "javascript:alert(1)" }); break;
+            case "announcement-protocol-relative-link": node["announcements"] = Announcements(Announcement() with { LinkUrl = "//evil.example" }); break;
+            case "announcement-external-image": node["announcements"] = Announcements(Announcement() with { ImageUrl = "https://tracker.example/a.png" }); break;
+            case "announcement-duplicate-id": node["announcements"] = Announcements(Announcement(), Announcement()); break;
+            case "announcement-too-many": node["announcements"] = Announcements(Enumerable.Range(0, 13).Select(index => Announcement($"a{index}")).ToArray()); break;
         }
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/site-content/homepage") { Content = JsonContent.Create(node) };
         request.Headers.Add("X-Test-Role", "Admin"); using var response = await _client.SendAsync(request);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+    [Fact]
+    public async Task AnnouncementsAreSavedInOrder()
+    {
+        var document = Document() with
+        {
+            HiddenSections = ["services"],
+            Announcements = [Announcement("first") with { Date = "2026-10-26", LinkUrl = "/tur/2", ImageUrl = $"/api/v1/site-content/homepage/images/{Guid.NewGuid()}" },
+                Announcement("second") with { IsVisible = false, LinkUrl = "https://pereme.com.tr/sikca-sorulan-sorular" }],
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/site-content/homepage") { Content = JsonContent.Create(document) };
+        request.Headers.Add("X-Test-Role", "Admin"); using var response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = (await response.Content.ReadFromJsonAsync<HomepageContentDocument>(JsonOptions))!.Announcements!;
+        Assert.Equal(["first", "second"], saved.Select(item => item.Id));
+        Assert.Equal("2026-10-26", saved[0].Date);
+        Assert.False(saved[1].IsVisible);
+    }
+    private static HomepageAnnouncement Announcement(string id = "news") =>
+        new(id, true, null, null, null, new("Yeni sezon", "Metin", "Detaylar"), new("New season", null, null));
+    private static JsonArray Announcements(params HomepageAnnouncement[] items) =>
+        new(items.Select(item => JsonSerializer.SerializeToNode(item, JsonOptions)).ToArray());
     [Fact]
     public async Task SpoofedImageNeverReachesStorage()
     {
