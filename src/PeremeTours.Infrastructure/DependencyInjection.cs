@@ -153,6 +153,7 @@ public static class DependencyInjection
             IFrequentlyAskedQuestionService,
             FrequentlyAskedQuestionService
         >();
+        services.AddScoped<IContentPageService, ContentPageService>();
         services.AddScoped<ITourImageStorage, S3TourImageStorage>();
         services.AddMemoryCache();
         services.Configure<EasyTicketOptions>(

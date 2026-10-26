@@ -156,7 +156,7 @@ public sealed class AdminSiteContentController(
         }
     }
 
-    private static bool IsImageUrl(string? value)
+    internal static bool IsImageUrl(string? value)
     {
         if (value == "") return true; // Explicit reset to the current design default.
         if (value is not { Length: > 0 and <= 2000 } || value.Contains('\\') || value.Any(char.IsControl)

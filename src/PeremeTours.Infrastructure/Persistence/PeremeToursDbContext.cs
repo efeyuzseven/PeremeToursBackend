@@ -35,6 +35,8 @@ public sealed class PeremeToursDbContext(DbContextOptions<PeremeToursDbContext> 
     public DbSet<FrequentlyAskedQuestion> FrequentlyAskedQuestions =>
         Set<FrequentlyAskedQuestion>();
 
+    public DbSet<ContentPage> ContentPages => Set<ContentPage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PeremeToursDbContext).Assembly);
