@@ -66,6 +66,7 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
     [InlineData("announcement-null")][InlineData("announcement-no-title")][InlineData("announcement-long-body")][InlineData("announcement-bad-date")]
     [InlineData("announcement-javascript-link")][InlineData("announcement-protocol-relative-link")][InlineData("announcement-external-image")]
     [InlineData("announcement-duplicate-id")][InlineData("announcement-too-many")]
+    [InlineData("story-photos-too-many")][InlineData("story-photo-external")][InlineData("story-photo-empty")]
     public async Task UnsafeOrIncompleteDocumentsFailValidation(string mode)
     {
         var node = JsonSerializer.SerializeToNode(Document(), JsonOptions)!;
@@ -91,6 +92,9 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
             case "announcement-protocol-relative-link": node["announcements"] = Announcements(Announcement() with { LinkUrl = "//evil.example" }); break;
             case "announcement-external-image": node["announcements"] = Announcements(Announcement() with { ImageUrl = "https://tracker.example/a.png" }); break;
             case "announcement-duplicate-id": node["announcements"] = Announcements(Announcement(), Announcement()); break;
+            case "story-photos-too-many": node["storyPhotos"] = new JsonArray(Enumerable.Range(0, 7).Select(_ => JsonValue.Create(StoryPhoto())).ToArray()); break;
+            case "story-photo-external": node["storyPhotos"] = new JsonArray("https://tracker.example/a.png"); break;
+            case "story-photo-empty": node["storyPhotos"] = new JsonArray(""); break;
             case "announcement-too-many": node["announcements"] = Announcements(Enumerable.Range(0, 13).Select(index => Announcement($"a{index}")).ToArray()); break;
         }
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/site-content/homepage") { Content = JsonContent.Create(node) };
@@ -114,6 +118,16 @@ public sealed class HomepageAndContactEndpointTests : IClassFixture<WebApplicati
         Assert.Equal("2026-10-26", saved[0].Date);
         Assert.False(saved[1].IsVisible);
     }
+    [Fact]
+    public async Task StoryPhotosAreSavedInOrder()
+    {
+        string[] photos = [StoryPhoto(), "/assets/tour-sunset.webp", StoryPhoto()];
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/site-content/homepage") { Content = JsonContent.Create(Document() with { StoryPhotos = photos }) };
+        request.Headers.Add("X-Test-Role", "Admin"); using var response = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(photos, (await response.Content.ReadFromJsonAsync<HomepageContentDocument>(JsonOptions))!.StoryPhotos!);
+    }
+    private static string StoryPhoto() => $"/api/v1/site-content/homepage/images/{Guid.NewGuid()}";
     private static HomepageAnnouncement Announcement(string id = "news") =>
         new(id, true, null, null, null, new("Yeni sezon", "Metin", "Detaylar"), new("New season", null, null));
     private static JsonArray Announcements(params HomepageAnnouncement[] items) =>

@@ -74,6 +74,8 @@ public sealed class AdminSiteContentController(
                 || hidden.Any(item => !new[] { "marquee", "services", "announcements", "why", "stories", "final", "heroCard" }.Contains(item))))
             ModelState.AddModelError("hiddenSections", "Bölüm görünürlüğü geçersiz.");
         ValidateAnnouncements(request.Announcements);
+        if (request.StoryPhotos is { } photos && (photos.Count > 6 || photos.Any(url => string.IsNullOrEmpty(url) || !IsImageUrl(url))))
+            ModelState.AddModelError("storyPhotos", "En fazla 6 fotoğraf eklenebilir ve fotoğraflar site görsel deposundan olmalıdır.");
         if (request.InstagramUrls is null) return Problem(statusCode: 400, title: "Instagram bağlantıları eksik olamaz.");
         if (request.InstagramUrls.Count > 6)
         {

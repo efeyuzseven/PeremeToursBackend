@@ -7,7 +7,9 @@ public sealed record HomepageContentDocument(
     IReadOnlyDictionary<string, string>? Images = null,
     IReadOnlyDictionary<string, string>? ImagePositions = null,
     IReadOnlyList<string>? HiddenSections = null,
-    IReadOnlyList<HomepageAnnouncement>? Announcements = null
+    IReadOnlyList<HomepageAnnouncement>? Announcements = null,
+    // Photos shown side by side in the stories section (replaces the Instagram video embeds).
+    IReadOnlyList<string>? StoryPhotos = null
 );
 
 // Homepage announcements, shown in the order they are listed.
