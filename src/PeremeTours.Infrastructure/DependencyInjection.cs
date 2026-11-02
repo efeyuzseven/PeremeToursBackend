@@ -155,6 +155,12 @@ public static class DependencyInjection
             FrequentlyAskedQuestionService
         >();
         services.AddScoped<IContentPageService, ContentPageService>();
+        services.Configure<GoogleReviewOptions>(configuration.GetSection(GoogleReviewOptions.SectionName));
+        services.AddHttpClient<IGoogleReviewService, GoogleReviewService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.MaxResponseContentBufferSize = 512_000;
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<ITourImageStorage, S3TourImageStorage>();
         services.AddMemoryCache();
         services.Configure<EasyTicketOptions>(
