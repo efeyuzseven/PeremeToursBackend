@@ -145,6 +145,7 @@ public static class DependencyInjection
             client.MaxResponseContentBufferSize = 131_072;
         });
         services.AddScoped<ITourContentService, TourContentService>();
+        services.AddScoped<ITourSaleStatus, TourSaleStatus>();
         services.AddScoped<IHomepageContentService, HomepageContentService>();
         services.AddScoped<IHomepageImageService, HomepageImageService>();
         services.AddScoped<ITourPageService, TourPageService>();

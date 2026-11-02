@@ -72,6 +72,12 @@ public interface ITourCatalogService
     );
 }
 
+public interface ITourSaleStatus
+{
+    // True while the tour has a TL price and a departure that has not left yet, on any port.
+    Task<bool> IsOnSaleAsync(int externalTourId, CancellationToken cancellationToken);
+}
+
 public sealed class TourCatalogUnavailableException(
     string message,
     Exception? innerException = null

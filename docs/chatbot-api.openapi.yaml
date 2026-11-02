@@ -15,8 +15,11 @@ paths:
   /tours:
     get:
       operationId: listTours
-      summary: Sitede yayındaki turları listeler
+      summary: Şu anda satışta olan turları listeler
       description: |
+        Yalnızca TL fiyatı ve henüz kalkmamış en az bir seferi olan turlar döner (birkaç
+        dakikalık önbellekle); seferi biten tur listeden kendiliğinden çıkar, sefer
+        açılınca geri gelir. Listede olmayan bir tur için "şu anda satışta değil" denir.
         Her tur bir kategoriye (bosphorus, turkish-night, sunset, daytime) bağlıdır.
         titleTr/titleEn boşsa tur adı olarak `name` kullanılır. Turun site sayfası
         https://pereme.com.tr/tur/{externalTourId} adresidir.

@@ -16,7 +16,7 @@ sözleşme [chatbot-api.openapi.yaml](./chatbot-api.openapi.yaml) dosyasındadı
 
 | Uç nokta | Ne için |
 | --- | --- |
-| `GET /tours` | Yayındaki turlar ve kategorileri |
+| `GET /tours` | Şu anda satışta olan turlar ve kategorileri |
 | `GET /tours/{externalTourId}/ports` | Turun kalkış iskeleleri |
 | `GET /tours/{externalTourId}/availability?departurePortId={id}` | Satıştaki tarih/saatler ve kişi başı fiyatlar |
 | `POST /tours/quote` | Seçilen sefer ve bilet adetleri için güncel toplam fiyat |
@@ -26,6 +26,10 @@ sözleşme [chatbot-api.openapi.yaml](./chatbot-api.openapi.yaml) dosyasındadı
 ## Turlar (23 Ekim 2026 itibarıyla)
 
 Liste her zaman `GET /tours` ile canlı alınmalıdır; aşağısı yalnızca fikir vermek içindir.
+`GET /tours` yalnızca satışta seferi olan turları döndürür: seferi kalmayan tur listeden
+kendiliğinden çıkar, yeni sefer açılınca geri gelir. Örneğin Üsküdar ve Kabataş Boğaz
+turlarında şu an sefer olmadığı için listede görünmezler. Turun sayfası
+(`/tour-pages/tour-{id}`) bu sırada da açık kalır.
 
 | externalTourId | Tur | Kategori | Kalkış iskeleleri | Bilet tipleri |
 | --- | --- | --- | --- | --- |

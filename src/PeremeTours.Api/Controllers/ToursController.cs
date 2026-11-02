@@ -13,6 +13,7 @@ public sealed class ToursController(
     ITourCatalogService tourCatalogService,
     ITourContentService tourContentService,
     ITourBookingService tourBookingService,
+    ITourSaleStatus tourSaleStatus,
     ILogger<ToursController> logger
 ) : ControllerBase
 {
@@ -28,9 +29,14 @@ public sealed class ToursController(
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<IReadOnlyList<PublicTourItem>>> List(
         CancellationToken cancellationToken
-    ) => await ExecuteAsync(
-        () => tourContentService.ListPublicAsync(cancellationToken)
-    );
+    ) => await ExecuteAsync(async () =>
+    {
+        // Only tours that can be booked right now; a tour's own page stays reachable either way.
+        var tours = await tourContentService.ListPublicAsync(cancellationToken);
+        var onSale = await Task.WhenAll(tours.Select(tour =>
+            tourSaleStatus.IsOnSaleAsync(tour.ExternalTourId, cancellationToken)));
+        return (IReadOnlyList<PublicTourItem>)tours.Where((_, index) => onSale[index]).ToList();
+    });
 
     [HttpGet("{externalTourId:int}/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
