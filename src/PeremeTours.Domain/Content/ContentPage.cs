@@ -43,6 +43,9 @@ public sealed class ContentPage
 
     public string? MetaDescriptionEn { get; set; }
 
+    // Set for posts written by an outside tool ("koala:<article id>"); a resend updates the same post.
+    public string? ExternalId { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public DateTimeOffset UpdatedAtUtc { get; set; }

@@ -27,5 +27,7 @@ internal sealed class ContentPageConfiguration : IEntityTypeConfiguration<Conten
         builder.HasIndex(page => new { page.Kind, page.SlugTr }).IsUnique();
         builder.HasIndex(page => new { page.Kind, page.SlugEn }).IsUnique();
         builder.HasIndex(page => new { page.Kind, page.IsPublished, page.PublishedAtUtc });
+        builder.Property(page => page.ExternalId).HasMaxLength(100);
+        builder.HasIndex(page => page.ExternalId).IsUnique();
     }
 }

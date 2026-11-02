@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PeremeTours.Application.Content;
 using PeremeTours.Application.Tours;
 using PeremeTours.Domain.Users;
 
@@ -118,26 +119,7 @@ public sealed class AdminTourContentsController(
     internal static bool HasValidSignature(
         ReadOnlySpan<byte> content,
         string contentType
-    ) => contentType.ToLowerInvariant() switch
-    {
-        "image/jpeg" => content.Length >= 3
-            && content[0] == 0xff
-            && content[1] == 0xd8
-            && content[2] == 0xff,
-        "image/png" => content.Length >= 8
-            && content[0] == 0x89
-            && content[1] == 0x50
-            && content[2] == 0x4e
-            && content[3] == 0x47
-            && content[4] == 0x0d
-            && content[5] == 0x0a
-            && content[6] == 0x1a
-            && content[7] == 0x0a,
-        "image/webp" => content.Length >= 12
-            && content[..4].SequenceEqual("RIFF"u8)
-            && content.Slice(8, 4).SequenceEqual("WEBP"u8),
-        _ => false,
-    };
+    ) => ImageSignature.Matches(content, contentType);
 }
 
 public sealed class UpdateTourContentRequest

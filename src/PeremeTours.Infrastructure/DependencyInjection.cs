@@ -155,6 +155,12 @@ public static class DependencyInjection
             FrequentlyAskedQuestionService
         >();
         services.AddScoped<IContentPageService, ContentPageService>();
+        services.Configure<KoalaOptions>(configuration.GetSection(KoalaOptions.SectionName));
+        services.AddHttpClient<IKoalaWebhookReceiver, KoalaWebhookReceiver>(client =>
+        {
+            // Koala gives up on a delivery after 10 seconds.
+            client.Timeout = TimeSpan.FromSeconds(6);
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.Configure<GoogleReviewOptions>(configuration.GetSection(GoogleReviewOptions.SectionName));
         services.AddHttpClient<IGoogleReviewService, GoogleReviewService>(client =>
         {
