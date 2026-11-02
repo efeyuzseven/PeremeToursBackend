@@ -93,7 +93,8 @@ jobs:
             --query taskDefinition > current-task-definition.json
 
           RECAPTCHA_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/ZIRAAT_POS-zOxbsJ:recaptchaSecretKey::"
-          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" --arg recaptchaSecret "$RECAPTCHA_SECRET_REF" '
+          GOOGLE_PLACES_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/GOOGLE_PLACES_API_KEY-Fd3i2V"
+          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" --arg recaptchaSecret "$RECAPTCHA_SECRET_REF" --arg googlePlacesSecret "$GOOGLE_PLACES_SECRET_REF" '
             {
               family,
               taskRoleArn,
@@ -115,8 +116,12 @@ jobs:
                       ((.secrets // []) | map(select(
                         .name != "Database__Password"
                         and .name != "Payments__Protection__RecaptchaSecretKey"
+                        and .name != "GoogleReviews__ApiKey"
                       )))
-                      + [{name: "Payments__Protection__RecaptchaSecretKey", valueFrom: $recaptchaSecret}]
+                      + [
+                          {name: "Payments__Protection__RecaptchaSecretKey", valueFrom: $recaptchaSecret},
+                          {name: "GoogleReviews__ApiKey", valueFrom: $googlePlacesSecret}
+                        ]
                     )
                   | .environment = (
                       ((.environment // []) | map(select(
