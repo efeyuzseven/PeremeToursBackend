@@ -94,7 +94,8 @@ jobs:
 
           RECAPTCHA_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/ZIRAAT_POS-zOxbsJ:recaptchaSecretKey::"
           GOOGLE_PLACES_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/GOOGLE_PLACES_API_KEY-Fd3i2V"
-          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" --arg recaptchaSecret "$RECAPTCHA_SECRET_REF" --arg googlePlacesSecret "$GOOGLE_PLACES_SECRET_REF" '
+          KOALA_SECRET_REF="arn:aws:secretsmanager:eu-central-1:890571110014:secret:/peremetours/test/KOALA_SIGNING_SECRET-9Sy3Fj"
+          jq --arg image "$IMAGE_URI" --arg container "$CONTAINER_NAME" --arg recaptchaSecret "$RECAPTCHA_SECRET_REF" --arg googlePlacesSecret "$GOOGLE_PLACES_SECRET_REF" --arg koalaSecret "$KOALA_SECRET_REF" '
             {
               family,
               taskRoleArn,
@@ -117,10 +118,12 @@ jobs:
                         .name != "Database__Password"
                         and .name != "Payments__Protection__RecaptchaSecretKey"
                         and .name != "GoogleReviews__ApiKey"
+                        and .name != "Koala__SigningSecret"
                       )))
                       + [
                           {name: "Payments__Protection__RecaptchaSecretKey", valueFrom: $recaptchaSecret},
-                          {name: "GoogleReviews__ApiKey", valueFrom: $googlePlacesSecret}
+                          {name: "GoogleReviews__ApiKey", valueFrom: $googlePlacesSecret},
+                          {name: "Koala__SigningSecret", valueFrom: $koalaSecret}
                         ]
                     )
                   | .environment = (
