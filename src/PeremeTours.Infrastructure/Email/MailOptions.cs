@@ -22,4 +22,6 @@ public sealed class MailOptions
     public string[] BosphorusRecipients { get; set; } = ["mcanerdinc@pereme.com.tr"];
     public string[] SunsetDaytimeRecipients { get; set; } = ["omacit@pereme.com.tr", "dpardun@pereme.com.tr"];
     public string[] ContactRecipients { get; set; } = ["eyilmaz@denturavrasya.com", "uakseloglu@denturavrasya.com"];
+    // E-invoice requests from checkout, whatever the tour; the Dentur Avrasya backend sends its own to the same address.
+    public string[] InvoiceRequestRecipients { get; set; } = ["muhasebe@denturavrasya.com"];
 }

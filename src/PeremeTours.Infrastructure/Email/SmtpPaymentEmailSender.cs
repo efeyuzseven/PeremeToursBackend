@@ -156,8 +156,9 @@ internal sealed class SmtpPaymentEmailSender(IOptions<MailOptions> options) : IP
         var sender = GetSender();
         if (!MailboxAddress.TryParse(notification.RecipientEmail, out var recipient))
             throw new EmailDeliveryException("EMAIL_ADDRESS_INVALID", "İç rezervasyon bildirimi alıcı adresi geçersiz.");
-        return CreateMessage(notification.Ticket, recipient, sender, ReservationNotificationTemplate.Render(notification.Ticket, _options),
-            $"pereme-reservation-{notification.Id:N}");
+        var content = ReservationNotificationTemplate.Render(notification.Ticket, _options,
+            ReservationNotificationRouting.IsInvoiceRequest(notification, _options));
+        return CreateMessage(notification.Ticket, recipient, sender, content, $"pereme-reservation-{notification.Id:N}");
     }
 
     private MailboxAddress GetSender()

@@ -133,7 +133,9 @@ public sealed class PaymentsController(
                         request.Card.ExpiryMonth,
                         request.Card.ExpiryYear
                     ),
-                    userId
+                    userId,
+                    request.Invoice is null ? null : new PaymentInvoice(request.Invoice.Type, request.Invoice.Title,
+                        request.Invoice.TaxNumber, request.Invoice.TaxOffice, request.Invoice.Email, request.Invoice.Address)
                 ),
                 cancellationToken
             );
@@ -338,8 +340,21 @@ public sealed class StartTourPaymentRequest
     [Required]
     public required PaymentCardRequest Card { get; init; }
 
+    // Present only when the customer asks for an e-invoice.
+    public PaymentInvoiceRequest? Invoice { get; init; }
+
     [StringLength(4096)]
     public string? RecaptchaToken { get; init; }
+}
+
+public sealed class PaymentInvoiceRequest
+{
+    [Required, RegularExpression("^(individual|corporate)$")] public required string Type { get; init; }
+    [Required, StringLength(160, MinimumLength = 2)] public required string Title { get; init; }
+    [Required, StringLength(11, MinimumLength = 10)] public required string TaxNumber { get; init; }
+    [StringLength(80)] public string? TaxOffice { get; init; }
+    [Required, EmailAddress, StringLength(320)] public required string Email { get; init; }
+    [Required, StringLength(500, MinimumLength = 2)] public required string Address { get; init; }
 }
 
 public sealed class PaymentCardRequest

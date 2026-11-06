@@ -21,6 +21,13 @@ public sealed record PaymentPassenger(
     public override string ToString() => "PaymentPassenger [REDACTED]";
 }
 
+public sealed record PaymentInvoice(
+    string Type, string Title, string TaxNumber, string? TaxOffice, string Email, string Address
+)
+{
+    public override string ToString() => "PaymentInvoice [REDACTED]";
+}
+
 public sealed record StartTourPaymentCommand(
     int ExternalTourId,
     int ExternalDeparturePortId,
@@ -36,7 +43,8 @@ public sealed record StartTourPaymentCommand(
     string? CustomerPhone,
     string Language,
     PaymentCard Card,
-    Guid? UserId
+    Guid? UserId,
+    PaymentInvoice? Invoice = null
 );
 
 public sealed record StartTourPaymentResult(

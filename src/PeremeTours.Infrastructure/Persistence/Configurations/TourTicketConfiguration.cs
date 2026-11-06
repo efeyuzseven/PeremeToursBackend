@@ -19,6 +19,12 @@ internal sealed class TourTicketConfiguration : IEntityTypeConfiguration<TourTic
         builder.Property(ticket => ticket.CustomerLanguage).HasMaxLength(2).HasDefaultValue("tr");
         builder.Property(ticket => ticket.DeparturePortName).HasMaxLength(160).HasDefaultValue(string.Empty);
         builder.Property(ticket => ticket.CustomerPhone).HasMaxLength(32);
+        builder.Property(ticket => ticket.InvoiceType).HasConversion<string>().HasMaxLength(16);
+        builder.Property(ticket => ticket.InvoiceTitle).HasMaxLength(160);
+        builder.Property(ticket => ticket.InvoiceTaxNumber).HasMaxLength(11);
+        builder.Property(ticket => ticket.InvoiceTaxOffice).HasMaxLength(80);
+        builder.Property(ticket => ticket.InvoiceEmail).HasMaxLength(320);
+        builder.Property(ticket => ticket.InvoiceAddress).HasMaxLength(500);
         builder.Property(ticket => ticket.Amount).HasPrecision(12, 2);
         builder.Property(ticket => ticket.Currency).HasMaxLength(3).IsRequired();
         builder.Property(ticket => ticket.Status).HasConversion<string>().HasMaxLength(32);

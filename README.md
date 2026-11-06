@@ -313,6 +313,13 @@ yolcu kimliği, pasaport, doğum tarihi ve kart bilgileri bulunmaz. Alıcı baş
 atomik worker sahiplenmesi, sınırlı güvenli tekrar ve belirsiz gönderimde otomatik tekrar etmeme
 kuralları geçerlidir. İç mail hataları admin bilet hata kayıtlarında `Email` aşamasında
 `RESERVATION_*` kodlarıyla görünür; müşteri mailinin durumunu, ödemeyi veya bilet kesimini değiştirmez.
+
+Müşteri ödeme formunda "E-fatura istiyorum" seçerse fatura tipi (bireysel/kurumsal), ad soyad veya unvan,
+T.C./vergi numarası, vergi dairesi, fatura e-postası ve adresi bilette saklanır. Bireysel faturada 11 haneli
+T.C. kimlik numarası, kurumsal faturada 10 haneli vergi numarası (şahıs şirketi için 11 haneli T.C.) ve vergi dairesi
+zorunludur. Bilet kesildiğinde, kategoriden bağımsız olarak `muhasebe@denturavrasya.com`
+(`MailSettings:InvoiceRequestRecipients`) aynı kuyruktan "E-Fatura Talebi" maili alır; bu mail fatura bilgilerini ve
+rezervasyon özetini içerir. Diğer alıcıların rezervasyon maili fatura bilgisi içermez.
 Eski satın alımlar geriye dönük bildirilmez; iptal talebi başlamış rezervasyonların bekleyen
 iç bildirimleri gönderilmeden atlanır. Gönderim öncesinde kategori/alıcı eşleşmesi tekrar doğrulanır;
 eski yönlendirmeye göre yanlış alıcıda bekleyen kayıtlar `Skipped / RECIPIENT_CHANGED` olur.

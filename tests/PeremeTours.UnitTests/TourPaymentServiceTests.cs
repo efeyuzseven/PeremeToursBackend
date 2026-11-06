@@ -290,7 +290,57 @@ public sealed class TourPaymentServiceTests : IDisposable
     {
         Assert.DoesNotContain("411111", Command().Card.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("12345678901", Command().Passengers[0].ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("1234567890", Invoice().ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task EInvoiceRequestIsStoredAndAccountingIsNotifiedAfterIssuance()
+    {
+        var command = Command() with
+        {
+            Invoice = Invoice() with { Type = "individual", TaxNumber = " 12345678901 ", TaxOffice = "  ", Email = "Fatura@Example.com" },
+        };
+        var start = await _service.StartAsync(command, CancellationToken.None); _db.ChangeTracker.Clear();
+        var stored = await _db.TourTickets.AsNoTracking().SingleAsync();
+        Assert.True(stored.WantsEInvoice);
+        Assert.Equal(TicketInvoiceType.Individual, stored.InvoiceType);
+        Assert.Equal("12345678901", stored.InvoiceTaxNumber);
+        Assert.Null(stored.InvoiceTaxOffice);
+        Assert.Equal("fatura@example.com", stored.InvoiceEmail);
+        Assert.Empty(await _db.ReservationNotifications.ToListAsync());
+        Assert.True((await _service.CompleteAsync(Callback(start), CancellationToken.None)).IsSuccessful);
+        Assert.Contains("muhasebe@denturavrasya.com", await _db.ReservationNotifications.Select(item => item.RecipientEmail).ToListAsync());
+    }
+
+    [Fact]
+    public async Task CorporateInvoiceKeepsTaxOfficeAndTenDigitTaxNumber()
+    {
+        await _service.StartAsync(Command() with { Invoice = Invoice() }, CancellationToken.None); _db.ChangeTracker.Clear();
+        var stored = await _db.TourTickets.AsNoTracking().SingleAsync();
+        Assert.Equal(TicketInvoiceType.Corporate, stored.InvoiceType);
+        Assert.Equal("1234567890", stored.InvoiceTaxNumber);
+        Assert.Equal("Kadıköy", stored.InvoiceTaxOffice);
+    }
+
+    [Theory]
+    [InlineData("individual", "1234567890", null, "fatura@example.com")] // Individuals need an 11-digit T.C. number.
+    [InlineData("individual", "01234567890", null, "fatura@example.com")]
+    [InlineData("corporate", "1234567890", "", "fatura@example.com")] // Companies need a tax office.
+    [InlineData("corporate", "12345A7890", "Kadıköy", "fatura@example.com")]
+    [InlineData("corporate", "1234567890", "Kadıköy", "not-an-email")]
+    [InlineData("other", "1234567890", "Kadıköy", "fatura@example.com")]
+    public async Task InvalidInvoiceDetailsAreRejectedBeforeBankOrDatabase(string type, string taxNumber, string? taxOffice, string email)
+    {
+        await Assert.ThrowsAsync<PaymentValidationException>(() => _service.StartAsync(Command() with
+        {
+            Invoice = new PaymentInvoice(type, "Örnek Turizm A.Ş.", taxNumber, taxOffice, email, "Moda Cad. 1, Kadıköy / İstanbul"),
+        }, CancellationToken.None));
+        Assert.Empty(await _db.TourTickets.ToListAsync());
+        Assert.Equal(0, _bank.StartCalls);
+    }
+
+    private static PaymentInvoice Invoice() => new("corporate", "Örnek Turizm A.Ş.", "1234567890", "Kadıköy",
+        "fatura@example.com", "Moda Cad. 1, Kadıköy / İstanbul");
 
     private static ZiraatPosOptions ConfiguredOptions() => new()
     {

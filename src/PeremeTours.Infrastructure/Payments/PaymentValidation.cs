@@ -14,9 +14,7 @@ internal static class PaymentValidation
         {
             throw new PaymentValidationException("Rezervasyon bilgilerini ve KVKK onayını kontrol edin.");
         }
-        if (!ValidName(command.CustomerName, 160) || command.CustomerEmail.Length > 320
-            || !MailAddress.TryCreate(command.CustomerEmail, out var address)
-            || !string.Equals(address.Address, command.CustomerEmail, StringComparison.OrdinalIgnoreCase)
+        if (!ValidName(command.CustomerName, 160) || !ValidEmail(command.CustomerEmail)
             || string.IsNullOrWhiteSpace(command.CustomerPhone) || command.CustomerPhone.Length > 32
             || command.CustomerPhone.Count(char.IsAsciiDigit) is < 7 or > 16)
         {
@@ -37,6 +35,10 @@ internal static class PaymentValidation
                 throw new PaymentValidationException("Yolcu bilgilerini kontrol edin.");
             }
         }
+        if (command.Invoice is { } invoice && !ValidInvoice(invoice))
+        {
+            throw new PaymentValidationException("Fatura bilgilerini kontrol edin.");
+        }
         var card = command.Card;
         var number = new string(card.Number.Where(char.IsAsciiDigit).ToArray());
         if (!ValidName(card.HolderName, 160) || card.Number.Length > 23
@@ -49,6 +51,25 @@ internal static class PaymentValidation
             throw new PaymentValidationException("Kart bilgileri geçersiz.");
         }
     }
+
+    private static bool ValidInvoice(PaymentInvoice invoice)
+    {
+        var corporate = invoice.Type == "corporate";
+        var taxNumber = invoice.TaxNumber?.Trim() ?? string.Empty;
+        var taxOffice = invoice.TaxOffice?.Trim() ?? string.Empty;
+        // Individuals are invoiced by T.C. number (11 digits). Companies use a 10-digit tax number,
+        // or the owner's T.C. number for a sole proprietorship.
+        var validTaxNumber = taxNumber.All(char.IsAsciiDigit)
+            && (corporate ? taxNumber.Length is 10 or 11 : taxNumber.Length == 11)
+            && !(taxNumber.Length == 11 && taxNumber[0] == '0');
+        return invoice.Type is "individual" or "corporate" && validTaxNumber
+            && ValidName(invoice.Title, 160) && ValidName(invoice.Address, 500) && ValidEmail(invoice.Email)
+            && (corporate ? ValidName(taxOffice, 80) : taxOffice.Length <= 80 && !taxOffice.Any(char.IsControl));
+    }
+
+    private static bool ValidEmail(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 320
+        && MailAddress.TryCreate(value, out var address)
+        && string.Equals(address.Address, value, StringComparison.OrdinalIgnoreCase);
 
     private static bool ValidName(string value, int max) => !string.IsNullOrWhiteSpace(value)
         && value.Trim().Length >= 2 && value.Trim().Length <= max && !value.Any(char.IsControl);

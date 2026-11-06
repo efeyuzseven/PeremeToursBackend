@@ -76,6 +76,12 @@ internal sealed class TourPaymentService(
             CustomerName = command.CustomerName.Trim(), CustomerEmail = command.CustomerEmail.Trim().ToLowerInvariant(),
             CustomerLanguage = command.Language == "en" ? "en" : "tr", DeparturePortName = quote.PortName,
             CustomerPhone = command.CustomerPhone?.Trim(), GuestCount = quote.GuestCount,
+            WantsEInvoice = command.Invoice is not null,
+            InvoiceType = command.Invoice is null ? null
+                : command.Invoice.Type == "corporate" ? TicketInvoiceType.Corporate : TicketInvoiceType.Individual,
+            InvoiceTitle = command.Invoice?.Title.Trim(), InvoiceTaxNumber = command.Invoice?.TaxNumber.Trim(),
+            InvoiceTaxOffice = Limit(command.Invoice?.TaxOffice, 80),
+            InvoiceEmail = command.Invoice?.Email.Trim().ToLowerInvariant(), InvoiceAddress = command.Invoice?.Address.Trim(),
             Amount = quote.Amount, Currency = "TRY", Status = TicketStatus.Pending, Channel = TicketChannel.Web,
             PaymentStatus = TicketPaymentStatus.Pending, TicketingStatus = TicketingStatus.Pending,
             ExternalTourId = quote.ExternalTourId, ExternalDeparturePortId = quote.ExternalDeparturePortId,

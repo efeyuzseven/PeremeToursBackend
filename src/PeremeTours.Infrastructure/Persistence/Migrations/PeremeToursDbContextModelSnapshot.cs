@@ -818,6 +818,30 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                     b.Property<int>("GuestCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("InvoiceAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("InvoiceEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("InvoiceTaxNumber")
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
+
+                    b.Property<string>("InvoiceTaxOffice")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("InvoiceTitle")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("InvoiceType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<DateTimeOffset?>("PaidAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -879,6 +903,9 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("WantsEInvoice")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

@@ -31,6 +31,21 @@ public sealed class TourTicket
 
     public string? CustomerPhone { get; set; }
 
+    // Set only when the customer asks for an e-invoice at checkout; accounting is notified with these details.
+    public bool WantsEInvoice { get; set; }
+
+    public TicketInvoiceType? InvoiceType { get; set; }
+
+    public string? InvoiceTitle { get; set; }
+
+    public string? InvoiceTaxNumber { get; set; }
+
+    public string? InvoiceTaxOffice { get; set; }
+
+    public string? InvoiceEmail { get; set; }
+
+    public string? InvoiceAddress { get; set; }
+
     public int GuestCount { get; set; }
 
     public decimal Amount { get; set; }

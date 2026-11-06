@@ -325,6 +325,61 @@ public sealed class ReservationNotificationTests : IDisposable
         Assert.Equal(6, ReservationNotificationRouting.Create(ticket, options, _clock.GetUtcNow()).Count);
     }
 
+    [Theory]
+    [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@pereme.com.tr,muhasebe@denturavrasya.com")]
+    [InlineData(null, "muhasebe@denturavrasya.com")]
+    public void EInvoiceRequestAddsAccountingWhateverTheCategory(string? category, string expectedRecipients)
+    {
+        var ticket = InvoiceTicket(); ticket.TourCategoryKey = category;
+        Assert.Equal(expectedRecipients.Split(','), ReservationNotificationRouting.Create(ticket, new MailOptions(), _clock.GetUtcNow()).Select(item => item.RecipientEmail));
+        ticket.WantsEInvoice = false;
+        Assert.DoesNotContain("muhasebe@denturavrasya.com", ReservationNotificationRouting.Create(ticket, new MailOptions(), _clock.GetUtcNow()).Select(item => item.RecipientEmail));
+    }
+
+    [Fact]
+    public void AccountingGetsTheInvoiceRequestAndStaffGetTheUsualSummary()
+    {
+        var smtp = new SmtpPaymentEmailSender(Options.Create(new MailOptions { Username = "fixture", Password = "fixture-password", SenderEmail = "sender@example.test" }));
+        var ticket = InvoiceTicket();
+        var messages = ReservationNotificationRouting.Create(ticket, new MailOptions(), _clock.GetUtcNow())
+            .Select(item => { item.Ticket = ticket; return smtp.CreateReservationMessage(item); })
+            .ToDictionary(message => Assert.IsType<MailboxAddress>(Assert.Single(message.To)).Address);
+        var accounting = messages["muhasebe@denturavrasya.com"];
+        Assert.Equal($"E-Fatura Talebi | {ticket.TicketCode}", accounting.Subject);
+        Assert.Contains("1234567890", accounting.TextBody, StringComparison.Ordinal);
+        Assert.Contains("Kurumsal", accounting.TextBody, StringComparison.Ordinal);
+        Assert.Contains("Kadıköy", accounting.TextBody, StringComparison.Ordinal);
+        Assert.Contains("&lt;b&gt;", accounting.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains(ticket.TicketCode, accounting.TextBody, StringComparison.Ordinal);
+        var staff = messages["mcanerdinc@pereme.com.tr"];
+        Assert.StartsWith("Yeni rezervasyon", staff.Subject, StringComparison.Ordinal);
+        Assert.DoesNotContain("1234567890", staff.TextBody + staff.HtmlBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AccountingRowIsRejectedWhenTheTicketHasNoInvoiceRequest()
+    {
+        var smtp = new SmtpPaymentEmailSender(Options.Create(new MailOptions { Username = "fixture", Password = "fixture-password", SenderEmail = "sender@example.test" }));
+        var ticket = InvoiceTicket(); ticket.WantsEInvoice = false;
+        var notification = new ReservationNotification { Id = Guid.NewGuid(), TicketId = ticket.Id, Ticket = ticket, RecipientEmail = "muhasebe@denturavrasya.com" };
+        Assert.Equal("RECIPIENT_CHANGED", Assert.Throws<EmailDeliveryException>(() => smtp.CreateReservationMessage(notification)).Code);
+        Assert.Throws<InvalidOperationException>(() => ReservationNotificationTemplate.Render(ticket, new MailOptions(), invoiceRequest: true));
+    }
+
+    private static TourTicket InvoiceTicket()
+    {
+        var ticket = Ticket();
+        ticket.TourCategoryKey = TourCategoryKeys.Bosphorus;
+        ticket.WantsEInvoice = true;
+        ticket.InvoiceType = TicketInvoiceType.Corporate;
+        ticket.InvoiceTitle = "Örnek <b>Turizm</b> A.Ş.";
+        ticket.InvoiceTaxNumber = "1234567890";
+        ticket.InvoiceTaxOffice = "Kadıköy";
+        ticket.InvoiceEmail = "fatura@example.com";
+        ticket.InvoiceAddress = "Moda Cad. 1, Kadıköy / İstanbul";
+        return ticket;
+    }
+
     private async Task QueueTwoCategoriesAsync()
     {
         await QueueAsync(TourCategoryKeys.TurkishNight);
