@@ -26,7 +26,7 @@ public sealed class ReservationNotificationTests : IDisposable
     [Theory]
     [InlineData(TourCategoryKeys.Sunset, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
     [InlineData(TourCategoryKeys.Daytime, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
-    [InlineData(TourCategoryKeys.TurkishNight, "skurt@pereme.com.tr,eakyuz@pereme.com.tr,reservation@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.TurkishNight, "skurt@pereme.com.tr,eakyuz@pereme.com.tr,reservation@pereme.com.tr,makin@pereme.com.tr,rgazaleh@pereme.com.tr,peremetours1@gmail.com")]
     [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@pereme.com.tr")]
     [InlineData(null, "")]
     [InlineData("unknown", "")]
@@ -125,9 +125,10 @@ public sealed class ReservationNotificationTests : IDisposable
     public async Task CategoryRecipientsSendOnceAndCustomerReceiptStateIsUnchanged()
     {
         await QueueTwoCategoriesAsync();
-        for (var index = 0; index < 5; index++) Assert.True(await Processor().ProcessNextAsync(CancellationToken.None));
+        for (var index = 0; index < 8; index++) Assert.True(await Processor().ProcessNextAsync(CancellationToken.None));
         Assert.False(await Processor().ProcessNextAsync(CancellationToken.None));
-        Assert.Equal(["dpardun@pereme.com.tr", "eakyuz@pereme.com.tr", "omacit@pereme.com.tr", "reservation@pereme.com.tr", "skurt@pereme.com.tr"],
+        Assert.Equal(["dpardun@pereme.com.tr", "eakyuz@pereme.com.tr", "makin@pereme.com.tr", "omacit@pereme.com.tr", "peremetours1@gmail.com",
+                "reservation@pereme.com.tr", "rgazaleh@pereme.com.tr", "skurt@pereme.com.tr"],
             _sender.Recipients.Order());
         _db.ChangeTracker.Clear();
         Assert.All(await _db.ReservationNotifications.ToListAsync(), item => { Assert.Equal(ReservationNotificationStatus.Sent, item.Status); Assert.NotNull(item.SentAtUtc); Assert.Null(item.LockToken); });
@@ -173,7 +174,7 @@ public sealed class ReservationNotificationTests : IDisposable
         while (await Processor().ProcessNextAsync(CancellationToken.None)) _db.ChangeTracker.Clear();
         _clock.Advance(TimeSpan.FromHours(1)); _db.ChangeTracker.Clear();
         Assert.False(await Processor().ProcessNextAsync(CancellationToken.None));
-        Assert.Equal(5, _sender.Recipients.Count);
+        Assert.Equal(8, _sender.Recipients.Count);
         Assert.Equal(ReservationNotificationStatus.ReviewRequired, (await _db.ReservationNotifications.SingleAsync(item => item.RecipientEmail == "reservation@pereme.com.tr")).Status);
     }
 
@@ -321,7 +322,7 @@ public sealed class ReservationNotificationTests : IDisposable
         var options = new MailOptions { BosphorusRecipients = [" "] };
         Assert.Empty(ReservationNotificationRouting.Create(ticket, options, _clock.GetUtcNow()));
         ticket.TourCategoryKey = TourCategoryKeys.TurkishNight;
-        Assert.Equal(3, ReservationNotificationRouting.Create(ticket, options, _clock.GetUtcNow()).Count);
+        Assert.Equal(6, ReservationNotificationRouting.Create(ticket, options, _clock.GetUtcNow()).Count);
     }
 
     private async Task QueueTwoCategoriesAsync()

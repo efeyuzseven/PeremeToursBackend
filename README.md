@@ -298,7 +298,8 @@ doğrulanmadıysa e-postada yalnızca ödeme alındığı ve biletlerin kontrol 
 PNR sadece `Issued` durumda gösterilir; kimlik, pasaport, doğum tarihi, kart ve CVC mailde yer almaz.
 
 Yeni başarılı bilet kesimleri ayrıca bağımsız `ReservationNotifications` kuyruğuna alınır:
-`skurt@pereme.com.tr`, `eakyuz@pereme.com.tr` ve `reservation@pereme.com.tr` yalnızca `turkish-night` (Türk Gecesi),
+`skurt@pereme.com.tr`, `eakyuz@pereme.com.tr`, `reservation@pereme.com.tr`, `makin@pereme.com.tr`,
+`rgazaleh@pereme.com.tr` ve `peremetours1@gmail.com` yalnızca `turkish-night` (Türk Gecesi),
 `mcanerdinc@pereme.com.tr` yalnızca `bosphorus` (Boğaz Turu),
 `omacit@pereme.com.tr` ve `dpardun@pereme.com.tr` ise `sunset` ve `daytime` kategorilerini alır.
 Bilinmeyen veya boş kategori iç bildirim oluşturmaz; tur adına bakarak alıcı tahmin edilmez.

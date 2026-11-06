@@ -16,7 +16,9 @@ public sealed class MailOptions
     public string SenderName { get; set; } = "Dentur Pereme";
     public string WebsiteUrl { get; set; } = "https://pereme.com.tr";
     // Defaults live here, not in appsettings: the configuration binder appends configured array items to these.
-    public string[] TurkishNightRecipients { get; set; } = ["skurt@pereme.com.tr", "eakyuz@pereme.com.tr", "reservation@pereme.com.tr"];
+    // Keep in step with the Turkish Night list in the Dentur Avrasya backend: both sites' sales reach the same team.
+    public string[] TurkishNightRecipients { get; set; } = ["skurt@pereme.com.tr", "eakyuz@pereme.com.tr", "reservation@pereme.com.tr",
+        "makin@pereme.com.tr", "rgazaleh@pereme.com.tr", "peremetours1@gmail.com"];
     public string[] BosphorusRecipients { get; set; } = ["mcanerdinc@pereme.com.tr"];
     public string[] SunsetDaytimeRecipients { get; set; } = ["omacit@pereme.com.tr", "dpardun@pereme.com.tr"];
     public string[] ContactRecipients { get; set; } = ["eyilmaz@denturavrasya.com", "uakseloglu@denturavrasya.com"];

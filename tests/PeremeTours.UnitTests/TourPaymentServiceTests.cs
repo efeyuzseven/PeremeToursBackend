@@ -328,7 +328,7 @@ public sealed class TourPaymentServiceTests : IDisposable
     };
 
     [Theory]
-    [InlineData(TourCategoryKeys.TurkishNight, "skurt@pereme.com.tr,eakyuz@pereme.com.tr,reservation@pereme.com.tr")]
+    [InlineData(TourCategoryKeys.TurkishNight, "skurt@pereme.com.tr,eakyuz@pereme.com.tr,reservation@pereme.com.tr,makin@pereme.com.tr,rgazaleh@pereme.com.tr,peremetours1@gmail.com")]
     [InlineData(TourCategoryKeys.Bosphorus, "mcanerdinc@pereme.com.tr")]
     [InlineData(TourCategoryKeys.Sunset, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
     [InlineData(TourCategoryKeys.Daytime, "omacit@pereme.com.tr,dpardun@pereme.com.tr")]
