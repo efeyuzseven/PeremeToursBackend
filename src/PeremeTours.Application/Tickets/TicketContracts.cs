@@ -29,7 +29,17 @@ public sealed record TicketSummary(
     bool CanCancel = false,
     bool CanRetryCancellation = false,
     PaymentEmailStatus? CancellationEmailStatus = null,
-    DateTime? CancellationEmailSentAtUtc = null
+    DateTime? CancellationEmailSentAtUtc = null,
+    TicketCancellationDetails? Cancellation = null
+);
+
+// Who started a cancellation/refund, why and when. Actor fields are null when the user no longer exists.
+public sealed record TicketCancellationDetails(
+    string? ActorName,
+    string? ActorEmail,
+    string Reason,
+    DateTime RequestedAtUtc,
+    DateTime? CompletedAtUtc
 );
 
 public sealed record CreateTicketCommand(

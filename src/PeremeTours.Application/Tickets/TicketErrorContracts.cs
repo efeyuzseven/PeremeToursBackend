@@ -6,7 +6,8 @@ public sealed record TicketErrorSummary(Guid Id, Guid TicketId, string TicketCod
     string TourName, DateOnly TourDate, decimal Amount, string Currency,
     TicketErrorStage Stage, string Code, string? ProviderCode, string Message,
     bool IsHistorical, DateTime CreatedAtUtc, TicketPaymentStatus PaymentStatus,
-    TicketingStatus TicketingStatus, PaymentEmailStatus? EmailStatus);
+    TicketingStatus TicketingStatus, PaymentEmailStatus? EmailStatus,
+    string? CustomerName = null, string? CustomerEmail = null, TicketCancellationDetails? Cancellation = null);
 
 public sealed record TicketErrorPage(IReadOnlyList<TicketErrorSummary> Items, int TotalCount, int Page, int PageSize, bool EmailSendingEnabled = false);
 

@@ -23,20 +23,30 @@ internal sealed class TicketErrorService(PeremeToursDbContext db, IOptions<MailO
 #pragma warning disable CA1304, CA1311, CA1862
             query = query.Where(item => item.Ticket.TicketCode.Contains(upper)
                 || item.Code.Contains(upper) || (item.ProviderCode != null && item.ProviderCode.Contains(upper))
-                || item.Ticket.TourName.ToLower().Contains(lower));
+                || item.Ticket.TourName.ToLower().Contains(lower)
+                || item.Ticket.CustomerName.ToLower().Contains(lower) || item.Ticket.CustomerEmail.ToLower().Contains(lower));
 #pragma warning restore CA1304, CA1311, CA1862
         }
         var total = await query.CountAsync(cancellationToken);
-        var items = await query.OrderByDescending(item => item.CreatedAtUtc).ThenByDescending(item => item.Id)
+        var rows = await query.OrderByDescending(item => item.CreatedAtUtc).ThenByDescending(item => item.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(item => new TicketErrorSummary(item.Id, item.TicketId, item.Ticket.TicketCode,
-                item.Ticket.TourName, item.Ticket.TourDate, item.Ticket.Amount, item.Ticket.Currency,
-                item.Stage, item.Code, item.ProviderCode, item.Message, item.IsHistorical, item.CreatedAtUtc,
-                item.Ticket.PaymentStatus, item.Ticket.TicketingStatus,
-                item.Code.StartsWith("CANCELLATION_EMAIL_")
-                    ? item.Ticket.CancellationEmail == null ? null : (PaymentEmailStatus?)item.Ticket.CancellationEmail.Status
-                    : item.Ticket.PaymentEmail == null ? null : (PaymentEmailStatus?)item.Ticket.PaymentEmail.Status))
+            .Select(item => new
+            {
+                Summary = new TicketErrorSummary(item.Id, item.TicketId, item.Ticket.TicketCode,
+                    item.Ticket.TourName, item.Ticket.TourDate, item.Ticket.Amount, item.Ticket.Currency,
+                    item.Stage, item.Code, item.ProviderCode, item.Message, item.IsHistorical, item.CreatedAtUtc,
+                    item.Ticket.PaymentStatus, item.Ticket.TicketingStatus,
+                    item.Code.StartsWith("CANCELLATION_EMAIL_")
+                        ? item.Ticket.CancellationEmail == null ? null : (PaymentEmailStatus?)item.Ticket.CancellationEmail.Status
+                        : item.Ticket.PaymentEmail == null ? null : (PaymentEmailStatus?)item.Ticket.PaymentEmail.Status,
+                    item.Ticket.CustomerName, item.Ticket.CustomerEmail, null),
+                item.Ticket.Cancellation,
+            })
             .ToListAsync(cancellationToken);
+        // Cancellation/refund records show who started them, why and when.
+        var actors = await TicketCancellationActors.LoadAsync(db,
+            rows.Where(row => row.Cancellation is not null).Select(row => row.Cancellation!.ActorUserId), cancellationToken);
+        var items = rows.Select(row => row.Summary with { Cancellation = TicketCancellationActors.Details(row.Cancellation, actors) }).ToList();
         return new TicketErrorPage(items, total, page, pageSize, mailOptions?.Value.Enabled ?? false);
     }
 }

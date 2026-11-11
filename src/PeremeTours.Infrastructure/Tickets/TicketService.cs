@@ -20,7 +20,9 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
             .Include(ticket => ticket.CancellationEmail)
             .OrderByDescending(ticket => ticket.CreatedAtUtc)
             .ToListAsync(cancellationToken);
-        return tickets.Select(Map).ToList();
+        var actors = await TicketCancellationActors.LoadAsync(dbContext,
+            tickets.Where(ticket => ticket.Cancellation is not null).Select(ticket => ticket.Cancellation!.ActorUserId), cancellationToken);
+        return tickets.Select(ticket => Map(ticket, actors)).ToList();
     }
 
     public async Task<TicketSummary> CreateAsync(
@@ -131,7 +133,9 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
         return Map(ticket);
     }
 
-    private static TicketSummary Map(TourTicket ticket) =>
+    private static TicketSummary Map(TourTicket ticket) => Map(ticket, null);
+
+    private static TicketSummary Map(TourTicket ticket, IReadOnlyDictionary<Guid, TicketCancellationActor>? actors) =>
         new(
             ticket.Id,
             ticket.TicketCode,
@@ -165,7 +169,8 @@ internal sealed class TicketService(PeremeToursDbContext dbContext)
                 && ticket.PaymentProvider == "Ziraat" && ticket.Currency == "TRY" && ticket.Amount == ticket.Cancellation.Amount
                 && Guid.TryParse(ticket.ExternalVoucherGuid, out _),
             ticket.CancellationEmail?.Status,
-            ticket.CancellationEmail?.SentAtUtc
+            ticket.CancellationEmail?.SentAtUtc,
+            TicketCancellationActors.Details(ticket.Cancellation, actors)
         );
 
     private static string CreateTicketCode(DateTimeOffset now) =>
