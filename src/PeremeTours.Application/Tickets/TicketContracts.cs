@@ -65,11 +65,17 @@ public sealed record UpdateTicketCommand(
     TicketStatus? Status
 );
 
+// Filters for the admin sales spreadsheet. Month is the first day of the Istanbul sale month;
+// Search matches ticket code, tour, customer name or email like the admin ticket list does.
+public sealed record TicketExportQuery(DateOnly? Month, TicketStatus? Status, string? Search, bool Turkish);
+
 public interface ITicketService
 {
     Task<IReadOnlyList<TicketSummary>> ListAsync(
         CancellationToken cancellationToken
     );
+
+    Task<byte[]> ExportAsync(TicketExportQuery query, CancellationToken cancellationToken);
 
     Task<TicketSummary> CreateAsync(
         Guid actorUserId,

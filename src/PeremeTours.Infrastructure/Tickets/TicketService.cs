@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using PeremeTours.Application.Tickets;
@@ -9,6 +10,36 @@ namespace PeremeTours.Infrastructure.Tickets;
 internal sealed class TicketService(PeremeToursDbContext dbContext)
     : ITicketService
 {
+    private static readonly TimeZoneInfo Istanbul = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+
+    public async Task<byte[]> ExportAsync(TicketExportQuery query, CancellationToken cancellationToken)
+    {
+        var source = dbContext.TourTickets.AsNoTracking()
+            .Include(ticket => ticket.Passengers)
+            .Include(ticket => ticket.Cancellation)
+            .AsQueryable();
+        if (query.Month is { } month)
+        {
+            var first = new DateOnly(month.Year, month.Month, 1);
+            var start = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(first.ToDateTime(TimeOnly.MinValue), Istanbul));
+            var end = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(first.AddMonths(1).ToDateTime(TimeOnly.MinValue), Istanbul));
+            source = source.Where(ticket => ticket.CreatedAtUtc >= start && ticket.CreatedAtUtc < end);
+        }
+        if (query.Status is { } status) source = source.Where(ticket => ticket.Status == status);
+        var tickets = await source.OrderByDescending(ticket => ticket.CreatedAtUtc).ToListAsync(cancellationToken);
+        var term = query.Search?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            // Same culture-aware, case-insensitive "contains" as the admin screen's search box.
+            var compare = (query.Turkish ? CultureInfo.GetCultureInfo("tr-TR") : CultureInfo.InvariantCulture).CompareInfo;
+            tickets = tickets.Where(ticket => new[] { ticket.TicketCode, ticket.TourName, ticket.CustomerName, ticket.CustomerEmail }
+                .Any(value => compare.IndexOf(value, term, CompareOptions.IgnoreCase) >= 0)).ToList();
+        }
+        var actors = await TicketCancellationActors.LoadAsync(dbContext,
+            tickets.Where(ticket => ticket.Cancellation is not null).Select(ticket => ticket.Cancellation!.ActorUserId), cancellationToken);
+        return TicketExcelExporter.Create(tickets, actors, query.Turkish, Istanbul);
+    }
+
     public async Task<IReadOnlyList<TicketSummary>> ListAsync(
         CancellationToken cancellationToken
     )

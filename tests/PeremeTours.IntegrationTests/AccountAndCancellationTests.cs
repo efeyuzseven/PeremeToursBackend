@@ -149,6 +149,22 @@ public sealed class AccountAndCancellationTests : IDisposable
     }
 
     [Fact]
+    public async Task StaffDownloadTheSalesSpreadsheetWhileCustomersAndBadMonthsAreRejected()
+    {
+        using var response = await GetAsync("/api/v1/admin/tickets/export?status=Confirmed", _admin, "Admin");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("tur-biletleri-tum-zamanlar.xlsx", response.Content.Headers.ContentDisposition!.FileNameStar);
+        Assert.True(response.Headers.CacheControl!.NoStore);
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(await response.Content.ReadAsStreamAsync()))
+            Assert.Equal(4, workbook.Worksheet(1).LastRowUsed()!.RowNumber());
+        using var badMonth = await GetAsync("/api/v1/admin/tickets/export?month=2026-13", _admin, "Admin");
+        Assert.Equal(HttpStatusCode.BadRequest, badMonth.StatusCode);
+        using var customer = await GetAsync("/api/v1/admin/tickets/export", _owner, "User");
+        Assert.Equal(HttpStatusCode.Forbidden, customer.StatusCode);
+    }
+
+    [Fact]
     public async Task CancellationMailDetailsRemainOwnedAndNeverRestoreCancelledQrCodes()
     {
         SeedCancellationMail();

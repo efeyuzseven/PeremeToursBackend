@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="AWSSDK.SecretsManager" />
+    <PackageReference Include="ClosedXML" />
     <PackageReference Include="MailKit" />
     <!-- Pin MailKit/MimeKit's transitive PKCS dependency to the patched .NET 10 release. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" />

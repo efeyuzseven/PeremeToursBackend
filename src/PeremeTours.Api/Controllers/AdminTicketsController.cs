@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -52,6 +53,28 @@ public sealed class AdminTicketsController(ITicketService ticketService, ITicket
     {
         Response.Headers.CacheControl = "no-store";
         return Ok(await ticketService.ListAsync(cancellationToken));
+    }
+
+    // Sales spreadsheet for the admin ticket list; month is the Istanbul sale month as yyyy-MM.
+    [HttpGet("export")]
+    [ProducesResponseType<FileContentResult>(StatusCodes.Status200OK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    public async Task<IActionResult> Export([FromQuery] string? month, [FromQuery] TicketStatus? status, [FromQuery] string? search,
+        [FromQuery] string? language, CancellationToken cancellationToken)
+    {
+        DateOnly? monthStart = null;
+        if (!string.IsNullOrWhiteSpace(month))
+        {
+            if (!DateOnly.TryParseExact($"{month.Trim()}-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz ay", detail: "Ay yyyy-AA biçiminde olmalıdır.");
+            monthStart = parsed;
+        }
+        if (search is { Length: > 160 }) search = search[..160];
+        var turkish = !string.Equals(language, "en", StringComparison.OrdinalIgnoreCase);
+        var content = await ticketService.ExportAsync(new TicketExportQuery(monthStart, status, search, turkish), cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        var period = monthStart?.ToString("yyyy-MM", CultureInfo.InvariantCulture) ?? (turkish ? "tum-zamanlar" : "all-time");
+        return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"{(turkish ? "tur-biletleri" : "tour-tickets")}-{period}.xlsx");
     }
 
     [HttpPost]
