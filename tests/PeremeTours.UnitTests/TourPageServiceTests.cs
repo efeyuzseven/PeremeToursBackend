@@ -96,6 +96,10 @@ public sealed class TourPageServiceTests : IDisposable
         Assert.Null(page.Document.HeroImageUrl);
         await _service.UpdateAsync("sunset", page.Document with { HeroImageUrl = uploaded.Url }, CancellationToken.None);
         Assert.Equal(uploaded.Url, (await _service.GetAsync("sunset", false, CancellationToken.None))!.Document.HeroImageUrl);
+        // Pages saved before hero slides existed have none; saved slides come back in order.
+        Assert.Null(page.Document.HeroSlideUrls);
+        await _service.UpdateAsync("sunset", page.Document with { HeroSlideUrls = [uploaded.Url, "/assets/second.webp"] }, CancellationToken.None);
+        Assert.Equal([uploaded.Url, "/assets/second.webp"], (await _service.GetAsync("sunset", false, CancellationToken.None))!.Document.HeroSlideUrls);
     }
 
     [Fact]

@@ -83,6 +83,8 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("booking-note-without-title")]
     [InlineData("long-booking-note")]
     [InlineData("long-details")]
+    [InlineData("slide-javascript")]
+    [InlineData("too-many-slides")]
     [InlineData("map-without-url")]
     [InlineData("map-other-host")]
     [InlineData("map-http")]
@@ -104,6 +106,8 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "layout": node["heroLayout"] = "arbitrary-css"; break;
             case "javascript": node["heroImageUrl"] = "javascript:alert(1)"; break;
             case "protocol-relative": node["heroImageUrl"] = "//untrusted.example/image.png"; break;
+            case "slide-javascript": node["heroSlideUrls"] = new JsonArray("javascript:alert(1)"); break;
+            case "too-many-slides": node["heroSlideUrls"] = new JsonArray(Enumerable.Range(0, 9).Select(_ => JsonValue.Create("/assets/test.webp")).ToArray()); break;
             case "duplicate": node["sections"]!.AsArray().Add(node["sections"]![0]!.DeepClone()); break;
             case "null-section": node["sections"]!.AsArray().Add(null); break;
             case "null-language": node["en"] = null; break;

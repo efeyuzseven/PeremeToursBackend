@@ -8,7 +8,9 @@ public sealed record TourPageDocument(
     [StringLength(2000)] string? HeroImageUrl,
     [Required] TourPageLanguageContent Tr,
     [Required] TourPageLanguageContent En,
-    [Required, MaxLength(8)] IReadOnlyList<TourPageSection> Sections
+    [Required, MaxLength(8)] IReadOnlyList<TourPageSection> Sections,
+    // Extra hero images shown after HeroImageUrl; with at least one, the site turns the hero into a slider.
+    [MaxLength(8)] IReadOnlyList<string>? HeroSlideUrls = null
 );
 
 public sealed record TourPageLanguageContent(

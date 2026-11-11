@@ -63,6 +63,8 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
             ModelState.AddModelError("bookingNotes", "Rezervasyon kartı notu eksik olamaz.");
         if (!string.IsNullOrEmpty(request.HeroImageUrl) && !IsImageUrl(request.HeroImageUrl))
             ModelState.AddModelError("heroImageUrl", "Görsel bağlantısı geçersiz.");
+        if ((request.HeroSlideUrls ?? []).Any(url => !IsImageUrl(url)))
+            ModelState.AddModelError("heroSlideUrls", "Görsel bağlantısı geçersiz.");
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
         try
         {
