@@ -10,7 +10,9 @@ public sealed record TourPageDocument(
     [Required] TourPageLanguageContent En,
     [Required, MaxLength(8)] IReadOnlyList<TourPageSection> Sections,
     // Extra hero images shown after HeroImageUrl; with at least one, the site turns the hero into a slider.
-    [MaxLength(8)] IReadOnlyList<string>? HeroSlideUrls = null
+    [MaxLength(8)] IReadOnlyList<string>? HeroSlideUrls = null,
+    // Tour detail pages only: the readable address (pereme.com.tr/tur/{slug}). Null or empty keeps the tour number.
+    [StringLength(120), RegularExpression("^[a-z0-9]+(-[a-z0-9]+)*$")] string? Slug = null
 );
 
 public sealed record TourPageLanguageContent(
@@ -69,10 +71,15 @@ public sealed record TourPageImageResult(string Url);
 
 public sealed class TourPageImageLimitException : Exception;
 
+// Another tour detail page already uses the requested slug.
+public sealed class TourPageSlugConflictException : Exception;
+
 public interface ITourPageService
 {
     Task<IReadOnlyList<TourPageItem>> ListAdminAsync(CancellationToken cancellationToken);
     Task<TourPageItem?> GetAsync(string key, bool includeHidden, CancellationToken cancellationToken);
+    // The published tour detail page reached by its readable address, or null.
+    Task<TourPageItem?> GetBySlugAsync(string slug, CancellationToken cancellationToken);
     Task<TourPageItem?> UpdateAsync(string key, TourPageDocument document, CancellationToken cancellationToken);
     Task<TourPageImageResult?> UploadImageAsync(string key, Stream content, string contentType, CancellationToken cancellationToken);
     Task<TourImageFile?> GetImageAsync(string key, Guid imageId, CancellationToken cancellationToken);

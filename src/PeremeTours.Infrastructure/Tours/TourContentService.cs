@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PeremeTours.Application.Tours;
 using PeremeTours.Domain.Tours;
+using PeremeTours.Infrastructure.Content;
 using PeremeTours.Infrastructure.Persistence;
 
 namespace PeremeTours.Infrastructure.Tours;
@@ -28,6 +29,8 @@ internal sealed class TourContentService(
                 cancellationToken
             );
 
+        var slugs = await TourPageSlugs.LoadAsync(dbContext, cancellationToken);
+
         return catalog
             .Select((item, index) => MapPublic(
                 item,
@@ -35,7 +38,7 @@ internal sealed class TourContentService(
                 index
             ))
             .Where(item => item is not null)
-            .Select(item => item!)
+            .Select(item => item! with { Slug = slugs.GetValueOrDefault(item.ExternalTourId) })
             .OrderBy(item => item.SortOrder)
             .ThenBy(item => item.ExternalTourId)
             .ToList();

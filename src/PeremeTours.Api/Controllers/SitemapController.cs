@@ -30,7 +30,7 @@ public sealed class SitemapController(IContentPageService pages, ITourContentSer
         try
         {
             urls.AddRange((await tours.ListPublicAsync(cancellationToken))
-                .Select(tour => SitemapUrl($"{baseUrl}/tur/{tour.ExternalTourId.ToString(CultureInfo.InvariantCulture)}")));
+                .Select(tour => SitemapUrl($"{baseUrl}/tur/{tour.Slug ?? tour.ExternalTourId.ToString(CultureInfo.InvariantCulture)}")));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

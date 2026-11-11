@@ -64,6 +64,18 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
+    [Fact]
+    public async Task TourPageIsAlsoServedByItsReadableAddressAndATakenAddressIsRefused()
+    {
+        using var response = await _client.GetAsync("/api/v1/tour-pages/gun-batimi-turu");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("sunset", (await response.Content.ReadFromJsonAsync<TourPageItem>())!.Key);
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(Document() with { Slug = "dolu-adres" }) };
+        request.Headers.Add("X-Test-Role", "Admin");
+        using var taken = await _client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+    }
+
     [Theory]
     [InlineData("layout")]
     [InlineData("javascript")]
@@ -84,6 +96,8 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [InlineData("long-booking-note")]
     [InlineData("long-details")]
     [InlineData("slide-javascript")]
+    [InlineData("slug-digits")]
+    [InlineData("slug-format")]
     [InlineData("too-many-slides")]
     [InlineData("map-without-url")]
     [InlineData("map-other-host")]
@@ -107,6 +121,8 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             case "javascript": node["heroImageUrl"] = "javascript:alert(1)"; break;
             case "protocol-relative": node["heroImageUrl"] = "//untrusted.example/image.png"; break;
             case "slide-javascript": node["heroSlideUrls"] = new JsonArray("javascript:alert(1)"); break;
+            case "slug-digits": node["slug"] = "2026"; break;
+            case "slug-format": node["slug"] = "Gün Batımı/../x"; break;
             case "too-many-slides": node["heroSlideUrls"] = new JsonArray(Enumerable.Range(0, 9).Select(_ => JsonValue.Create("/assets/test.webp")).ToArray()); break;
             case "duplicate": node["sections"]!.AsArray().Add(node["sections"]![0]!.DeepClone()); break;
             case "null-section": node["sections"]!.AsArray().Add(null); break;
@@ -242,8 +258,10 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
             => Task.FromResult<IReadOnlyList<TourPageItem>>([Item()]);
         public Task<TourPageItem?> GetAsync(string key, bool includeHidden, CancellationToken cancellationToken)
             => Task.FromResult<TourPageItem?>(key == "sunset" ? Item() : null);
+        public Task<TourPageItem?> GetBySlugAsync(string slug, CancellationToken cancellationToken)
+            => Task.FromResult<TourPageItem?>(slug == "gun-batimi-turu" ? Item() : null);
         public Task<TourPageItem?> UpdateAsync(string key, TourPageDocument document, CancellationToken cancellationToken)
-            => Task.FromResult<TourPageItem?>(Item() with { Document = document });
+            => document.Slug == "dolu-adres" ? throw new TourPageSlugConflictException() : Task.FromResult<TourPageItem?>(Item() with { Document = document });
         public Task<TourPageImageResult?> UploadImageAsync(string key, Stream content, string contentType, CancellationToken cancellationToken)
             => throw new InvalidOperationException("Invalid image must not reach storage.");
         public Task<TourImageFile?> GetImageAsync(string key, Guid imageId, CancellationToken cancellationToken) => Task.FromResult<TourImageFile?>(null);

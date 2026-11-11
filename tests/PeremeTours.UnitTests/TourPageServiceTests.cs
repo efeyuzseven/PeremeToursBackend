@@ -68,6 +68,37 @@ public sealed class TourPageServiceTests : IDisposable
         Assert.NotNull(await _service.GetAsync("tour-41", false, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task TourDetailPagesAreReachedByTheirOwnAddressWhichStaysUnique()
+    {
+        var page = (await _service.GetAsync("tour-41", true, CancellationToken.None))!;
+        Assert.Null(page.Document.Slug);
+        await _service.UpdateAsync("tour-41", page.Document with { Slug = "gun-batimi-turu" }, CancellationToken.None);
+        var found = await _service.GetBySlugAsync("gun-batimi-turu", CancellationToken.None);
+        Assert.Equal("tour-41", found!.Key);
+        Assert.Equal("gun-batimi-turu", found.Document.Slug);
+        Assert.Null(await _service.GetBySlugAsync("gun-batimi", CancellationToken.None));
+        Assert.Null(await _service.GetBySlugAsync("Gun-Batimi-Turu", CancellationToken.None));
+        Assert.Null(await _service.GetBySlugAsync("x\"y", CancellationToken.None));
+
+        // Another tour cannot take the address; the page that has it can be saved again with it.
+        var other = (await _service.GetAsync("tour-42", true, CancellationToken.None))!;
+        await Assert.ThrowsAsync<TourPageSlugConflictException>(() =>
+            _service.UpdateAsync("tour-42", other.Document with { Slug = "gun-batimi-turu" }, CancellationToken.None));
+        await _service.UpdateAsync("tour-41", page.Document with { Slug = "gun-batimi-turu", HeroLayout = "split" }, CancellationToken.None);
+
+        // A hidden tour stays unreachable by its address, and service pages never get one.
+        await _service.UpdateAsync("tour-42", other.Document with { Slug = "gizli-tur" }, CancellationToken.None);
+        Assert.Null(await _service.GetBySlugAsync("gizli-tur", CancellationToken.None));
+        var service = (await _service.GetAsync("sunset", true, CancellationToken.None))!;
+        Assert.Null((await _service.UpdateAsync("sunset", service.Document with { Slug = "ozel-adres" }, CancellationToken.None))!.Document.Slug);
+        Assert.Null(await _service.GetBySlugAsync("ozel-adres", CancellationToken.None));
+
+        // Clearing the address goes back to the tour number.
+        Assert.Null((await _service.UpdateAsync("tour-41", page.Document with { Slug = " " }, CancellationToken.None))!.Document.Slug);
+        Assert.Null(await _service.GetBySlugAsync("gun-batimi-turu", CancellationToken.None));
+    }
+
     [Theory]
     [InlineData("unknown")]
     [InlineData("tour-0")]

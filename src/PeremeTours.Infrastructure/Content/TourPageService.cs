@@ -42,9 +42,20 @@ internal sealed class TourPageService(PeremeToursDbContext db, ITourContentServi
             tour.TitleTr ?? tour.Name, tour.TitleEn ?? tour.Name, tour.DescriptionTr, tour.DescriptionEn), saved);
     }
 
+    public async Task<TourPageItem?> GetBySlugAsync(string slug, CancellationToken cancellationToken)
+    {
+        if (!IsSlug(slug) || await TourPageSlugs.FindKeyAsync(db, slug, cancellationToken) is not { } key) return null;
+        return await GetAsync(key, false, cancellationToken);
+    }
+
     public async Task<TourPageItem?> UpdateAsync(string key, TourPageDocument document, CancellationToken cancellationToken)
     {
         if (await GetAsync(key, true, cancellationToken) is not { } item) return null;
+        // Only tour detail pages have an address of their own; service pages keep their fixed /turlar/... address.
+        var slug = item.ExternalTourId is null || string.IsNullOrWhiteSpace(document.Slug) ? null : document.Slug.Trim();
+        if (slug is not null && await TourPageSlugs.FindKeyAsync(db, slug, cancellationToken) is { } owner && owner != item.Key)
+            throw new TourPageSlugConflictException();
+        document = document with { Slug = slug };
         var page = await GetOrCreateAsync(item, cancellationToken);
         page.ContentJson = JsonSerializer.Serialize(document, JsonOptions);
         page.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -83,6 +94,9 @@ internal sealed class TourPageService(PeremeToursDbContext db, ITourContentServi
     private static TourPageItem Map(string key, string category, int? tourId, string name, TourPageDocument defaults, TourPage? page)
         => new(key, category, tourId, name, page is null ? defaults : JsonSerializer.Deserialize<TourPageDocument>(page.ContentJson, JsonOptions) ?? defaults,
             page is not null, page?.UpdatedAtUtc);
+
+    private static bool IsSlug(string value) => value.Length is > 0 and <= 120
+        && value.All(character => character is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
 
     private static string TourKey(int id) => $"tour-{id.ToString(CultureInfo.InvariantCulture)}";
 

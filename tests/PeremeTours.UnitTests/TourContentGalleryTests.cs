@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using PeremeTours.Application.Tours;
+using PeremeTours.Domain.Content;
 using PeremeTours.Infrastructure.Persistence;
 using PeremeTours.Infrastructure.Tours;
 
@@ -43,6 +44,18 @@ public sealed class TourContentGalleryTests : IDisposable
         var cleared = await _service.UpdateAsync(7, Command([]), CancellationToken.None);
         Assert.Empty(cleared!.GalleryImageUrls!);
         Assert.Null((await _db.TourContents.SingleAsync()).GalleryImageUrlsJson);
+    }
+
+    [Fact]
+    public async Task PublicToursCarryTheReadableAddressOfTheirDetailPage()
+    {
+        Assert.Null((await _service.ListPublicAsync(CancellationToken.None)).Single().Slug);
+        _db.TourPages.AddRange(
+            new TourPage { Key = "tour-7", ContentJson = "{\"heroLayout\":\"cover\",\"slug\":\"gun-batimi-turu\"}", UpdatedAtUtc = DateTimeOffset.UtcNow },
+            new TourPage { Key = "tour-8", ContentJson = "{\"slug\":\"baska-tur\"}", UpdatedAtUtc = DateTimeOffset.UtcNow },
+            new TourPage { Key = "sunset", ContentJson = "{\"slug\":null}", UpdatedAtUtc = DateTimeOffset.UtcNow });
+        await _db.SaveChangesAsync();
+        Assert.Equal("gun-batimi-turu", (await _service.ListPublicAsync(CancellationToken.None)).Single().Slug);
     }
 
     private static UpdateTourContentCommand Command(IReadOnlyList<string>? gallery) =>

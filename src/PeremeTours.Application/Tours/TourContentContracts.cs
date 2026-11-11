@@ -15,7 +15,9 @@ public sealed record PublicTourItem(
     string? ImageUrl,
     int SortOrder,
     // Extra card images after ImageUrl; with at least one, the site lets visitors flip through them on the tour card.
-    IReadOnlyList<string>? GalleryImageUrls = null
+    IReadOnlyList<string>? GalleryImageUrls = null,
+    // Readable address of the tour's detail page (pereme.com.tr/tur/{Slug}); null means /tur/{ExternalTourId}.
+    string? Slug = null
 );
 
 public sealed record AdminTourContentItem(

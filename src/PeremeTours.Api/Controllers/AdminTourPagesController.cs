@@ -65,12 +65,17 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
             ModelState.AddModelError("heroImageUrl", "Görsel bağlantısı geçersiz.");
         if ((request.HeroSlideUrls ?? []).Any(url => !IsImageUrl(url)))
             ModelState.AddModelError("heroSlideUrls", "Görsel bağlantısı geçersiz.");
+        // /tur/{number} always means the tour with that number, so an address made only of digits would be ambiguous.
+        if (!string.IsNullOrEmpty(request.Slug) && request.Slug.All(char.IsAsciiDigit))
+            ModelState.AddModelError("slug", "Sayfa bağlantısı yalnızca rakamlardan oluşamaz.");
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
         try
         {
             var page = await pages.UpdateAsync(key, request, cancellationToken);
             return page is null ? NotFound() : Ok(page);
         }
+        catch (TourPageSlugConflictException)
+        { return Problem(statusCode: 409, title: "Bu sayfa bağlantısı başka bir tur sayfasında kullanılıyor.", detail: "Bu sayfa bağlantısı başka bir tur sayfasında kullanılıyor. Lütfen farklı bir bağlantı yazın."); }
         catch (TourCatalogUnavailableException) { return CatalogUnavailable(); }
     }
 

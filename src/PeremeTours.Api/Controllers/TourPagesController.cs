@@ -16,7 +16,8 @@ public sealed class TourPagesController(ITourPageService pages) : ControllerBase
         Response.Headers.CacheControl = "no-store";
         try
         {
-            var page = await pages.GetAsync(key, false, cancellationToken);
+            // The key is a service page ("sunset"), a tour number ("tour-2") or a tour page's readable address.
+            var page = await pages.GetAsync(key, false, cancellationToken) ?? await pages.GetBySlugAsync(key, cancellationToken);
             return page is null ? NotFound() : Ok(page with
             {
                 Document = page.Document with { Sections = page.Document.Sections.Where(section => section.IsVisible).ToArray() },
