@@ -20,6 +20,7 @@ internal sealed class TourContentConfiguration
         builder.Property(content => content.BadgeEn).HasMaxLength(80);
         builder.Property(content => content.ImageObjectKey).HasMaxLength(500);
         builder.Property(content => content.ImageContentType).HasMaxLength(100);
+        builder.Property(content => content.GalleryImageUrlsJson).HasMaxLength(20000);
         builder.Property(content => content.IsVisible).IsRequired();
         builder.Property(content => content.CreatedAtUtc).IsRequired();
         builder.Property(content => content.UpdatedAtUtc).IsRequired();

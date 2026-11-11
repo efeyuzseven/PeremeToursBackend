@@ -20,6 +20,9 @@ public sealed class TourContent
 
     public string? ImageContentType { get; set; }
 
+    // Extra card images shown after the main one (a JSON array of image links); null when there are none.
+    public string? GalleryImageUrlsJson { get; set; }
+
     public int? SortOrder { get; set; }
 
     public bool IsVisible { get; set; } = true;

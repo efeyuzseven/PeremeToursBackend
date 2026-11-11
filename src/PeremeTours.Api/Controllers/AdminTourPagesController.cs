@@ -109,7 +109,7 @@ public sealed class AdminTourPagesController(ITourPageService pages) : Controlle
         && uri.AbsolutePath.StartsWith("/maps/embed", StringComparison.Ordinal)
         && !value.Contains('\\') && !value.Contains('\r') && !value.Contains('\n') && !value.Contains('"');
 
-    private static bool IsImageUrl(string? value) => value is { Length: > 0 and <= 2000 }
+    internal static bool IsImageUrl(string? value) => value is { Length: > 0 and <= 2000 }
         && (value.StartsWith("/assets/", StringComparison.Ordinal) || value.StartsWith("/api/v1/tours/", StringComparison.Ordinal)
             || value.StartsWith("/api/v1/tour-pages/", StringComparison.Ordinal)
             || Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)

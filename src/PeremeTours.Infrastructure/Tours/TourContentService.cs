@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PeremeTours.Application.Tours;
 using PeremeTours.Domain.Tours;
@@ -87,6 +88,12 @@ internal sealed class TourContentService(
         content.BadgeEn = Normalize(command.BadgeEn);
         content.SortOrder = command.SortOrder;
         content.IsVisible = command.IsVisible;
+        if (command.GalleryImageUrls is not null)
+        {
+            content.GalleryImageUrlsJson = command.GalleryImageUrls.Count == 0
+                ? null
+                : JsonSerializer.Serialize(command.GalleryImageUrls);
+        }
         content.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -248,7 +255,8 @@ internal sealed class TourContentService(
             content?.BadgeTr,
             content?.BadgeEn,
             BuildImageUrl(item.ExternalTourId, content),
-            content?.SortOrder ?? GetDefaultSortOrder(item.CategoryKey, catalogIndex)
+            content?.SortOrder ?? GetDefaultSortOrder(item.CategoryKey, catalogIndex),
+            GalleryOf(content)
         );
     }
 
@@ -273,8 +281,14 @@ internal sealed class TourContentService(
         content?.SortOrder ?? GetDefaultSortOrder(item.CategoryKey, catalogIndex),
         content?.IsVisible ?? true,
         content is not null,
-        content?.UpdatedAtUtc
+        content?.UpdatedAtUtc,
+        GalleryOf(content)
     );
+
+    private static List<string> GalleryOf(TourContent? content) =>
+        string.IsNullOrWhiteSpace(content?.GalleryImageUrlsJson)
+            ? []
+            : JsonSerializer.Deserialize<List<string>>(content.GalleryImageUrlsJson) ?? [];
 
     private static string? BuildImageUrl(
         int externalTourId,

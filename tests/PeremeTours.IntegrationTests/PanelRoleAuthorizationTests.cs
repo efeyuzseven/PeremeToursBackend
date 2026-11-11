@@ -20,6 +20,8 @@ namespace PeremeTours.IntegrationTests;
 
 public sealed class PanelRoleAuthorizationTests : IDisposable
 {
+    private static readonly string[] UnsafeGallery = ["javascript:alert(1)"];
+    private static readonly string[] ValidGallery = ["/api/v1/tour-pages/tour-1/images/00000000-0000-0000-0000-000000000001"];
     private const string Password = "FixturePassword1";
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private readonly WebApplicationFactory<Program> _factory;
@@ -105,6 +107,16 @@ public sealed class PanelRoleAuthorizationTests : IDisposable
         using var tour = await Send(HttpMethod.Put, "/api/v1/admin/tour-contents/1", token,
             new { titleTr = "Fixture", titleEn = "Fixture", sortOrder = 0, isVisible = true });
         Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, tour.StatusCode);
+        // Gallery links are checked like every other image link, and at most eight are kept.
+        using var badGallery = await Send(HttpMethod.Put, "/api/v1/admin/tour-contents/1", token,
+            new { titleTr = "Fixture", sortOrder = 0, isVisible = true, galleryImageUrls = UnsafeGallery });
+        Assert.Equal(allowed ? HttpStatusCode.BadRequest : HttpStatusCode.Forbidden, badGallery.StatusCode);
+        using var longGallery = await Send(HttpMethod.Put, "/api/v1/admin/tour-contents/1", token,
+            new { titleTr = "Fixture", sortOrder = 0, isVisible = true, galleryImageUrls = Enumerable.Repeat("/assets/test.webp", 9) });
+        Assert.Equal(allowed ? HttpStatusCode.BadRequest : HttpStatusCode.Forbidden, longGallery.StatusCode);
+        using var gallery = await Send(HttpMethod.Put, "/api/v1/admin/tour-contents/1", token,
+            new { titleTr = "Fixture", sortOrder = 0, isVisible = true, galleryImageUrls = ValidGallery });
+        Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, gallery.StatusCode);
         if (allowed)
         {
             using var body = JsonDocument.Parse(await faq.Content.ReadAsStringAsync());

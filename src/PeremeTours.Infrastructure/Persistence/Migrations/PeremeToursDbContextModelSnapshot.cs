@@ -952,6 +952,10 @@ namespace PeremeTours.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3000)
                         .HasColumnType("character varying(3000)");
 
+                    b.Property<string>("GalleryImageUrlsJson")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
                     b.Property<string>("ImageContentType")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");

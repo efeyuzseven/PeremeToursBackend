@@ -13,7 +13,9 @@ public sealed record PublicTourItem(
     string? BadgeTr,
     string? BadgeEn,
     string? ImageUrl,
-    int SortOrder
+    int SortOrder,
+    // Extra card images after ImageUrl; with at least one, the site lets visitors flip through them on the tour card.
+    IReadOnlyList<string>? GalleryImageUrls = null
 );
 
 public sealed record AdminTourContentItem(
@@ -33,7 +35,8 @@ public sealed record AdminTourContentItem(
     int SortOrder,
     bool IsVisible,
     bool IsCustomized,
-    DateTimeOffset? UpdatedAtUtc
+    DateTimeOffset? UpdatedAtUtc,
+    IReadOnlyList<string>? GalleryImageUrls = null
 );
 
 public sealed record UpdateTourContentCommand(
@@ -44,7 +47,9 @@ public sealed record UpdateTourContentCommand(
     string? BadgeTr,
     string? BadgeEn,
     int SortOrder,
-    bool IsVisible
+    bool IsVisible,
+    // Null keeps the stored gallery as it is (older clients do not send it); an empty list clears it.
+    IReadOnlyList<string>? GalleryImageUrls = null
 );
 
 public sealed record TourImageFile(byte[] Content, string ContentType);

@@ -40,6 +40,12 @@ public sealed class AdminTourContentsController(
         CancellationToken cancellationToken
     )
     {
+        if ((request.GalleryImageUrls ?? []).Any(url => !AdminTourPagesController.IsImageUrl(url)))
+        {
+            ModelState.AddModelError("galleryImageUrls", "Görsel bağlantısı geçersiz.");
+            return ValidationProblem(ModelState);
+        }
+
         var result = await tourContentService.UpdateAsync(
             externalTourId,
             new UpdateTourContentCommand(
@@ -50,7 +56,8 @@ public sealed class AdminTourContentsController(
                 request.BadgeTr,
                 request.BadgeEn,
                 request.SortOrder,
-                request.IsVisible
+                request.IsVisible,
+                request.GalleryImageUrls
             ),
             cancellationToken
         );
@@ -146,6 +153,10 @@ public sealed class UpdateTourContentRequest
     public int SortOrder { get; init; }
 
     public bool IsVisible { get; init; } = true;
+
+    // Extra card images, uploaded through the tour's page image store. Omitted (null) leaves them unchanged.
+    [MaxLength(8)]
+    public IReadOnlyList<string>? GalleryImageUrls { get; init; }
 }
 
 public sealed class TourImageUploadRequest
