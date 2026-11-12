@@ -10,14 +10,24 @@ namespace PeremeTours.Api.Controllers;
 [Route("api/v1/tour-pages")]
 public sealed class TourPagesController(ITourPageService pages) : ControllerBase
 {
+    // A service page ("sunset") or a tour detail page by its number ("tour-2"). Anything else is tried as a tour
+    // page's readable address, which is how site versions before the by-address route asked for it.
     [HttpGet("{key}")]
-    public async Task<ActionResult<TourPageItem>> Get(string key, CancellationToken cancellationToken)
+    public Task<ActionResult<TourPageItem>> Get(string key, CancellationToken cancellationToken)
+        => Published(async () => await pages.GetAsync(key, false, cancellationToken) ?? await pages.GetBySlugAsync(key, cancellationToken));
+
+    // A tour detail page by its readable address (pereme.com.tr/tur/{slug}). Kept apart from the keys above because an
+    // address may spell the same as a service page's key ("sunset", "daytime") and must still open the tour page.
+    [HttpGet("by-address/{slug}")]
+    public Task<ActionResult<TourPageItem>> GetByAddress(string slug, CancellationToken cancellationToken)
+        => Published(() => pages.GetBySlugAsync(slug, cancellationToken));
+
+    private async Task<ActionResult<TourPageItem>> Published(Func<Task<TourPageItem?>> find)
     {
         Response.Headers.CacheControl = "no-store";
         try
         {
-            // The key is a service page ("sunset"), a tour number ("tour-2") or a tour page's readable address.
-            var page = await pages.GetAsync(key, false, cancellationToken) ?? await pages.GetBySlugAsync(key, cancellationToken);
+            var page = await find();
             return page is null ? NotFound() : Ok(page with
             {
                 Document = page.Document with { Sections = page.Document.Sections.Where(section => section.IsVisible).ToArray() },

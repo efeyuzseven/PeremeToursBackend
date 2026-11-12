@@ -67,9 +67,22 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
     [Fact]
     public async Task TourPageIsAlsoServedByItsReadableAddressAndATakenAddressIsRefused()
     {
-        using var response = await _client.GetAsync("/api/v1/tour-pages/gun-batimi-turu");
+        using var response = await _client.GetAsync("/api/v1/tour-pages/by-address/gun-batimi-turu");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("sunset", (await response.Content.ReadFromJsonAsync<TourPageItem>())!.Key);
+        Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
+        var byAddress = await response.Content.ReadFromJsonAsync<TourPageItem>();
+        Assert.Equal("tour-41", byAddress!.Key);
+        Assert.DoesNotContain(byAddress.Document.Sections, section => section.Id == "hidden");
+        // An address that spells like a service page's key opens the tour page, and the key still opens the service page.
+        using var sameName = await _client.GetAsync("/api/v1/tour-pages/by-address/sunset");
+        Assert.Equal("tour-41", (await sameName.Content.ReadFromJsonAsync<TourPageItem>())!.Key);
+        using var servicePage = await _client.GetAsync("/api/v1/tour-pages/sunset");
+        Assert.Equal("sunset", (await servicePage.Content.ReadFromJsonAsync<TourPageItem>())!.Key);
+        // Older site versions ask for an address on the key route; that keeps working when no key has that name.
+        using var onKeyRoute = await _client.GetAsync("/api/v1/tour-pages/gun-batimi-turu");
+        Assert.Equal("tour-41", (await onKeyRoute.Content.ReadFromJsonAsync<TourPageItem>())!.Key);
+        using var unknown = await _client.GetAsync("/api/v1/tour-pages/by-address/olmayan-adres");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
         using var request = new HttpRequestMessage(HttpMethod.Put, "/api/v1/admin/tour-pages/sunset") { Content = JsonContent.Create(Document() with { Slug = "dolu-adres" }) };
         request.Headers.Add("X-Test-Role", "Admin");
         using var taken = await _client.SendAsync(request);
@@ -259,7 +272,7 @@ public sealed class TourPagesEndpointTests : IClassFixture<WebApplicationFactory
         public Task<TourPageItem?> GetAsync(string key, bool includeHidden, CancellationToken cancellationToken)
             => Task.FromResult<TourPageItem?>(key == "sunset" ? Item() : null);
         public Task<TourPageItem?> GetBySlugAsync(string slug, CancellationToken cancellationToken)
-            => Task.FromResult<TourPageItem?>(slug == "gun-batimi-turu" ? Item() : null);
+            => Task.FromResult<TourPageItem?>(slug is "gun-batimi-turu" or "sunset" ? Item() with { Key = "tour-41", ExternalTourId = 41 } : null);
         public Task<TourPageItem?> UpdateAsync(string key, TourPageDocument document, CancellationToken cancellationToken)
             => document.Slug == "dolu-adres" ? throw new TourPageSlugConflictException() : Task.FromResult<TourPageItem?>(Item() with { Document = document });
         public Task<TourPageImageResult?> UploadImageAsync(string key, Stream content, string contentType, CancellationToken cancellationToken)
